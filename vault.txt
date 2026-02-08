@@ -1,0 +1,82 @@
+Source: https://x.com/davj/status/2009316295330996584?s=12 
+Content: Starting a startup completely changed the trajectory of my life
+
+Before: – 22 years old – $100k in debt – Skinny-fat – Hacker house
+
+After: – 25 years old – $350k in debt – Just fat – Homeless
+
+Here’s what I did after: 
+
+Source: https://x.com/it_unprofession/status/2010149157718122717 
+Content: IT Unprofessional (@it_unprofession) My wife just asked me if I'm "done working" because her sister wants to FaceTime. I said, "Yeah, the upgrade finished. Everything's stable now." 
+
+I haven't looked at a single work system all day. I've been playing Elden Ring for 4 hours. 
+
+But I made sure to leave my laptop open
+
+Source: https://x.com/Sauers_/status/1942804979355410784 
+Content: Sauers (@Sauers_) A man cannot prompt the same model twice, for it is not the same model, and he is not the same man
+
+Source: https://x.com/marmik_patel19/status/2010808296832467370 
+Content: Marmik Patel (@Marmik_Patel19) applying to jobs is the dumbest shit you can ever do. i learned the hard way. dmed a 1000 recruiters/engineers. did 670 apps. didn't get me anything. cause its not equally distributed: the top 10% of people take 90% of the jobs. 
+
+it's the same everywhere else. the hottest girl gets 90% of the guys. the largest artist gets 90% of the streams. so this past year i stopped wasting time on applying and started doing whatever gave me the biggest impact. did hella trips to sf/nyc, built products, did content, made friends. 
+
+and soon the dynamic flipped. jan-may, 83 recruiters dmed me. ai labs, yc companies, unicorns. 
+
+it's a winner-takes-all world. you have no choice but to become the winner. or waste away your life fighting for scraps. 
+
+Source: https://x.com/startup_bestie/status/1948391643536556218 
+Content: kristen ˙ᵕ˙ (@startup_bestie) Get your first users through these subreddits in 2025:
+
+r/InternetIsBeautiful (17M) r/Entrepreneur (4.8M) r/productivity (4M) r/business (2.5M) r/smallbusiness (2.2M) r/startups (1.8M) r/EntrepreneurRideAlong (593K) r/SideProject (430K) r/Business_Ideas (359K) r/SaaS (341K)
+
+Source: https://x.com/vivoplt/status/2011682593239155017 
+Content: vivo (@vivoplt) Don’t overcomplicate it. • Build a Password Manager to learn file handling, hashing (not full crypto) • Build a URL Shortener to understand routing, IDs, and persistence • Build a Todo App with deadlines to practice CRUD and basic state • Build a Web Scraper to learn requests, parsing, and rate limits • Build a CLI Expense Tracker to master logic, files, and edge cases • Build a Log Analyzer to work with files, timestamps, and patterns • Build a Simple Recommender using similarity rules (not ML magic) • Build an Email Automation Script using SMTP and scheduling 
+
+Source: https://x.com/itspaulai/status/2011855062457634902 
+Content: Paul Couvert (@itsPaulAi) So we now have a 100% open source and local Google Translate 
+
+And the smaller 4B model runs on a phone. Offline. Insane. 
+
+Source: https://x.com/rasmalai/status/2011676333894709517 
+Content: rasmalai (@rasmalai) there’s an insane amount of MONEY hiding where most people don’t look. • take any reddit thread and add /.json to the url • you get the full conversation instantly • every reply, deep threads included • all the context and metadata in a clean format 
+
+now do something smart with it: • pass it through an llm • map real user pain • spot intent, not guesses • find patterns no one reads manually
+
+small subreddits are gold mines. people openly explain what they need and what they’d pay for. 
+
+the advantage isn’t speed. it’s listening better than everyone else. 
+
+Source: https://x.com/natiakourdadze/status/2013325851044004145 
+Content: Natia Kurdadze (@natiakourdadze) How to find new users for your startup at 0$ cost:
+
+Source: https://x.com/ecomchigga/status/2014040307755528491 
+Content: 🀅 (@ecomchigga) nobody's going to tell you this so i will
+
+the digital product game is rigged in your favor if you know where to look
+
+here's everything that's actually working right now:
+
+THE NICHES THAT ARE PRINTING
+
+ai onlyfans management - teaching people to run OF accounts with ai generated
+
+Source: https://x.com/hamza_automates/status/2014394462697595361 
+Content: Hamza Baig (@hamza_automates) I know a guy in Ohio clearing $1.1M/year connecting plumbers to AI
+
+he found the glitch:
+
+plumbers hate everything except fixing pipes
+
+they hate quoting, scheduling, invoicing, and the endless back-and-forth with customers
+
+he built a system that automates the entire mess: 
+
+Source: https://x.com/jonathanzliu/status/2014955543593681186 
+Content: jonathan liu (@jonathanzliu) hands down one of the best articles i’ve read on how to build viral consumer apps
+
+(and make money doing so)
+
+Source: https://x.com/Cr7Godbrand/status/2015762713960468661 
+Content: STUNNER (@Cr7Godbrand) I had a female roommate who badged into my room one night and said her boyfriend want to beat her. She was crying, so I asked what happened, and she said he wanted to beat her becuse he claimed she took some of his weed he had plan to sell.  I confronted the guy, and he said he
