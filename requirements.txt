@@ -6,3 +6,6 @@ pyyaml
 beautifulsoup4
 lxml
 python-dotenv
+chromadb
+fastapi
+uvicorn
