@@ -2,7 +2,10 @@ import './App.css'
 
 export default function App() {
   const openSidePanel = async () => {
-    await chrome.sidePanel.open({ windowId: await chrome.windows.getCurrent().then(w => w.id!) })
+    const currentWindow = await chrome.windows.getCurrent()
+    if (currentWindow.id) {
+      await chrome.sidePanel.open({ windowId: currentWindow.id })
+    }
   }
 
   return (
