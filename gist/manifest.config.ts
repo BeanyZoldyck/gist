@@ -17,11 +17,22 @@ export default defineManifest({
   permissions: [
     'sidePanel',
     'contentSettings',
+    'storage',
   ],
-  content_scripts: [{
-    js: ['src/content/main.tsx'],
-    matches: ['https://*/*'],
-  }],
+  content_scripts: [
+    {
+      js: ['src/content/main.tsx'],
+      matches: ['https://*/*'],
+    },
+    {
+      js: ['src/content/link-hints.tsx'],
+      matches: ['https://*/*'],
+    },
+    {
+      js: ['src/content/input-completion.tsx'],
+      matches: ['https://*/*'],
+    },
+  ],
   side_panel: {
     default_path: 'src/sidepanel/index.html',
   },
