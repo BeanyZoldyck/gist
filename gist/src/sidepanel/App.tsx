@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import './App.css'
 
 interface ChatResponse {
   response: string
@@ -82,60 +81,89 @@ export default function App() {
   }
 
   return (
-    <div className="rag-container">
-      <div className="rag-header">
-        <h2>Local RAG Assistant</h2>
-        <div className="connection-status">
-          <button onClick={checkConnection} className="status-btn">
+    <div className="h-screen flex flex-col bg-[#1a1a1a] text-white">
+      <div className="p-4 border-b border-gray-700">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-lg font-semibold">Local RAG Assistant</h2>
+          <button 
+            onClick={checkConnection} 
+            className={`text-sm px-3 py-1 rounded transition-colors ${
+              connected === null ? 'bg-gray-700 hover:bg-gray-600' :
+              connected ? 'bg-green-700 hover:bg-green-600' : 'bg-red-700 hover:bg-red-600'
+            }`}
+          >
             {connected === null ? 'Check Connection' : connected ? '✓ Connected' : '✗ Disconnected'}
           </button>
-          <input
-            type="text"
-            value={apiUrl}
-            onChange={(e) => setApiUrl(e.target.value)}
-            placeholder="API URL"
-            className="api-url-input"
-          />
         </div>
+        <input
+          type="text"
+          value={apiUrl}
+          onChange={(e) => setApiUrl(e.target.value)}
+          placeholder="API URL"
+          className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500"
+        />
       </div>
 
-      <div className="rag-messages">
+      <div className="flex-1 overflow-y-auto p-4">
         {messages.length === 0 && (
-          <div className="empty-state">
-            <p>Ask questions about your knowledge base</p>
-            <p className="hint">Make sure the RAG API server is running</p>
+          <div className="text-center text-gray-500 mt-10">
+            <p className="mb-2">Ask questions about your knowledge base</p>
+            <p className="text-sm">Make sure the RAG API server is running</p>
           </div>
         )}
         {messages.map((msg, idx) => (
-          <div key={idx} className={`message ${msg.role}`}>
-            <div className="message-role">{msg.role}</div>
-            <div className="message-content">{msg.content}</div>
+          <div key={idx} className={`mb-4 ${msg.role === 'user' ? 'ml-auto max-w-[80%]' : 'mr-auto max-w-[80%]'}`}>
+            <div className={`text-xs uppercase tracking-wide mb-1 ${msg.role === 'user' ? 'text-indigo-400' : 'text-green-400'}`}>
+              {msg.role}
+            </div>
+            <div className={`rounded-lg p-3 ${
+              msg.role === 'user' ? 'bg-indigo-600' : 'bg-gray-800'
+            }`}>
+              {msg.content}
+            </div>
             {msg.context && msg.context.length > 0 && (
-              <details className="message-context">
-                <summary>Context ({msg.context.length} chunks)</summary>
-                <ul>
+              <details className="mt-2 text-xs text-gray-500">
+                <summary className="cursor-pointer hover:text-gray-400">Context ({msg.context.length} chunks)</summary>
+                <ul className="mt-2 space-y-1 pl-4 list-disc">
                   {msg.context.map((ctx, i) => (
-                    <li key={i}>{ctx}</li>
+                    <li key={i} className="break-words">{ctx}</li>
                   ))}
                 </ul>
               </details>
             )}
           </div>
         ))}
-        {loading && <div className="message assistant loading">Thinking...</div>}
+        {loading && (
+          <div className="mr-auto max-w-[80%]">
+            <div className="text-xs uppercase tracking-wide text-green-400 mb-1">assistant</div>
+            <div className="bg-gray-800 rounded-lg p-3">
+              Thinking...
+            </div>
+          </div>
+        )}
       </div>
 
-      <div className="rag-input">
+      <div className="p-4 border-t border-gray-700">
         <textarea
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="Ask a question about your documents..."
           rows={3}
+          className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-indigo-500 resize-none mb-3"
         />
-        <div className="rag-actions">
-          <button onClick={clearChat} className="secondary-btn">Clear</button>
-          <button onClick={sendQuery} disabled={loading || !query.trim()} className="primary-btn">
+        <div className="flex justify-end gap-2">
+          <button 
+            onClick={clearChat} 
+            className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm transition-colors"
+          >
+            Clear
+          </button>
+          <button 
+            onClick={sendQuery} 
+            disabled={loading || !query.trim()}
+            className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg text-sm transition-colors"
+          >
             Send
           </button>
         </div>
