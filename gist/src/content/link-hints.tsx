@@ -50,9 +50,11 @@ function LinkHintsApp() {
   }, [])
 
   const handleLinkSelected = async (hint: LinkHint) => {
+    console.log('[LinkHints] handleLinkSelected called with hint:', hint)
     const url = hint.href || hint.element.getAttribute('data-href') || window.location.href
     const title = hint.text || new URL(url).hostname || 'Untitled'
-    
+    console.log('[LinkHints] URL:', url, 'Title:', title)
+
     const resource: Omit<Resource, 'id' | 'createdAt'> = {
       url,
       title,
@@ -60,24 +62,12 @@ function LinkHintsApp() {
       notes: '',
       tags: []
     }
-    
+
     try {
       const saved = await saveResource(resource)
       console.log('[LinkHints] Saved resource:', saved)
-      
-      if (hint.href) {
-        window.open(hint.href, '_blank')
-      } else {
-        hint.element.click()
-      }
     } catch (error) {
       console.error('[LinkHints] Failed to save resource:', error)
-      
-      if (hint.href) {
-        window.open(hint.href, '_blank')
-      } else {
-        hint.element.click()
-      }
     }
   }
 
