@@ -6,7 +6,7 @@ import dotenv
 dotenv.load_dotenv()
 
 
-def generate_embeddings():
+def generate_embeddings(verbose=False):
     # 1. Initialize the client
     api_key = os.environ.get("GEMINI_API_KEY")
     client = genai.Client(api_key=api_key)
@@ -23,18 +23,20 @@ def generate_embeddings():
         model="gemini-embedding-001",
         contents=documents,
     )
-
+    vectors = []
     # 4. Extract the vectors to send to Qdrant
     for i, embedding in enumerate(response.embeddings):
         vector = embedding.values
-
-        print(f"\--- Document {i + 1} ---")
-        print(f"Original Text: {documents[i]}")
-        print(f"Vector Length: {len(vector)} dimensions")
-        print(f"Vector Preview: {vector[:5]} ...\n")
+        vectors.append(vector)
+        if verbose:
+            print(f"\--- Document {i + 1} ---")
+            print(f"Original Text: {documents[i]}")
+            print(f"Vector Length: {len(vector)} dimensions")
+            print(f"Vector Preview: {vector[:5]} ...\n")
 
         # At this point, you would upload 'vector' to Qdrant.
         # If storing text in Qdrant, you would pass documents[i] as the 'payload'.
+    return vectors
 
 
 if __name__ == "__main__":
