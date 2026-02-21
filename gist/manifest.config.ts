@@ -16,9 +16,12 @@ export default defineManifest({
   },
   permissions: [
     'sidePanel',
-    'contentSettings',
     'storage',
   ],
+  options_ui: {
+    page: 'src/settings/index.html',
+    open_in_tab: true,
+  },
   content_scripts: [
     {
       js: ['src/content/main.tsx'],

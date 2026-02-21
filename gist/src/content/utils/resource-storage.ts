@@ -1,3 +1,5 @@
+import { upsertResource as qdrantUpsert, searchResources as qdrantSearch, deleteResource as qdrantDelete, getAllResources as qdrantGetAll } from '@/utils/qdrant-client'
+
 export interface Resource {
   id: string
   url: string
@@ -9,12 +11,56 @@ export interface Resource {
   updatedAt?: number
 }
 
-const RESOURCES_KEY = 'gist_resources'
-const MAX_RESOURCES = 500
+async function generateEmbedding(text: string): Promise<number[] | null> {
+  try {
+    const { pipeline, env } = await import('@xenova/transformers')
+    env.allowLocalModels = false
+    env.useBrowserCache = true
+    
+    const model = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2', {
+      quantized: true
+    })
+    
+    const output = await model(text, {
+      pooling: 'mean',
+      normalize: true
+    })
+    
+    return Array.from(output.data)
+  } catch (error) {
+    console.error('[Embeddings] Failed to generate embedding:', error)
+    return null
+  }
+}
+
+async function getEmbeddingText(resource: Omit<Resource, 'id' | 'createdAt'>): Promise<string> {
+  const parts = [
+    resource.title,
+    resource.url,
+    resource.notes,
+    resource.tags.join(' '),
+    resource.text || ''
+  ]
+  return parts.filter(Boolean).join(' ')
+}
 
 export async function getAllResources(): Promise<Resource[]> {
-  const result = await chrome.storage.local.get(RESOURCES_KEY)
-  return (result[RESOURCES_KEY] as Resource[]) || []
+  try {
+    const points = await qdrantGetAll()
+    return points.map(p => ({
+      id: p.id,
+      url: p.payload.url,
+      title: p.payload.title,
+      text: p.payload.text,
+      notes: p.payload.notes,
+      tags: p.payload.tags,
+      createdAt: p.payload.createdAt,
+      updatedAt: p.payload.updatedAt
+    }))
+  } catch (error) {
+    console.error('[Storage] Failed to get resources:', error)
+    return []
+  }
 }
 
 export async function getResource(id: string): Promise<Resource | null> {
@@ -23,72 +69,85 @@ export async function getResource(id: string): Promise<Resource | null> {
 }
 
 export async function saveResource(resource: Omit<Resource, 'id' | 'createdAt'> & { id?: string }): Promise<Resource> {
-  const resources = await getAllResources()
   const now = Date.now()
   
   const newResource: Resource = {
     ...resource,
     id: resource.id || `res_${now}_${Math.random().toString(36).substr(2, 9)}`,
-    createdAt: resource.id ? resources.find(r => r.id === resource.id)?.createdAt || now : now,
+    createdAt: resource.id ? (await getAllResources()).find(r => r.id === resource.id)?.createdAt || now : now,
     updatedAt: now
   }
   
-  const existingIndex = resources.findIndex(r => r.id === newResource.id)
-  if (existingIndex >= 0) {
-    resources[existingIndex] = newResource
-  } else {
-    resources.unshift(newResource)
+  const embeddingText = await getEmbeddingText(newResource)
+  const embedding = await generateEmbedding(embeddingText)
+  
+  if (!embedding) {
+    console.error('[Storage] Failed to generate embedding for resource')
+    throw new Error('Failed to generate embedding')
   }
   
-  if (resources.length > MAX_RESOURCES) {
-    resources.splice(MAX_RESOURCES)
-  }
+  await qdrantUpsert({
+    id: newResource.id,
+    vector: embedding,
+    payload: {
+      url: newResource.url,
+      title: newResource.title,
+      text: newResource.text,
+      notes: newResource.notes,
+      tags: newResource.tags,
+      createdAt: newResource.createdAt,
+      updatedAt: newResource.updatedAt
+    }
+  })
   
-  await chrome.storage.local.set({ [RESOURCES_KEY]: resources })
   return newResource
 }
 
 export async function deleteResource(id: string): Promise<void> {
-  const resources = await getAllResources()
-  const filtered = resources.filter(r => r.id !== id)
-  await chrome.storage.local.set({ [RESOURCES_KEY]: filtered })
+  await qdrantDelete(id)
 }
 
 export async function updateResourceTags(id: string, tags: string[]): Promise<Resource | null> {
-  const resources = await getAllResources()
-  const index = resources.findIndex(r => r.id === id)
-  if (index < 0) return null
+  const resource = await getResource(id)
+  if (!resource) return null
   
-  resources[index].tags = tags
-  resources[index].updatedAt = Date.now()
-  await chrome.storage.local.set({ [RESOURCES_KEY]: resources })
-  return resources[index]
+  resource.tags = tags
+  resource.updatedAt = Date.now()
+  await saveResource(resource)
+  return resource
 }
 
 export async function updateResourceNotes(id: string, notes: string): Promise<Resource | null> {
-  const resources = await getAllResources()
-  const index = resources.findIndex(r => r.id === id)
-  if (index < 0) return null
+  const resource = await getResource(id)
+  if (!resource) return null
   
-  resources[index].notes = notes
-  resources[index].updatedAt = Date.now()
-  await chrome.storage.local.set({ [RESOURCES_KEY]: resources })
-  return resources[index]
+  resource.notes = notes
+  resource.updatedAt = Date.now()
+  await saveResource(resource)
+  return resource
 }
 
 export async function searchResources(query: string): Promise<Resource[]> {
-  const resources = await getAllResources()
-  if (!query.trim()) return resources
+  if (!query.trim()) {
+    return getAllResources()
+  }
   
-  const lowerQuery = query.toLowerCase()
-  return resources.filter(resource => {
-    const titleMatch = resource.title.toLowerCase().includes(lowerQuery)
-    const urlMatch = resource.url.toLowerCase().includes(lowerQuery)
-    const notesMatch = resource.notes.toLowerCase().includes(lowerQuery)
-    const tagMatch = resource.tags.some(tag => tag.toLowerCase().includes(lowerQuery))
-    
-    return titleMatch || urlMatch || notesMatch || tagMatch
-  })
+  try {
+    const results = await qdrantSearch(query, 50)
+    return results.map(r => ({
+      id: r.id,
+      url: r.payload.url,
+      title: r.payload.title,
+      text: r.payload.text,
+      notes: r.payload.notes,
+      tags: r.payload.tags,
+      createdAt: r.payload.createdAt,
+      updatedAt: r.payload.updatedAt
+    }))
+  } catch (error) {
+    console.error('[Storage] Search failed, returning empty:', error)
+    return []
+  }
 }
 
 export function getResourcePreviewText(resource: Resource): string {
