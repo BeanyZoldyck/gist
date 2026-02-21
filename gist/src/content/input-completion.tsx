@@ -147,6 +147,10 @@ function InputCompletionApp() {
 
 const container = document.createElement('div')
 container.id = 'input-completion-root'
+const shadow = container.attachShadow({ mode: 'open' })
+const reactRoot = document.createElement('div')
+reactRoot.id = 'react-root'
+shadow.appendChild(reactRoot)
 document.body.appendChild(container)
-const root = createRoot(container)
+const root = createRoot(reactRoot)
 root.render(<InputCompletionApp />)

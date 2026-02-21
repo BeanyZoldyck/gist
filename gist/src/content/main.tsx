@@ -54,8 +54,12 @@ function InputDetectorApp() {
 
 const container = document.createElement('div')
 container.id = 'input-detector-overlay'
+const shadow = container.attachShadow({ mode: 'open' })
+const reactRoot = document.createElement('div')
+reactRoot.id = 'react-root'
+shadow.appendChild(reactRoot)
 document.body.appendChild(container)
-overlayRoot = createRoot(container)
+overlayRoot = createRoot(reactRoot)
 overlayRoot.render(<InputDetectorApp />)
 
 const mutationObserver = new MutationObserver((mutations) => {
