@@ -1,5 +1,3 @@
-import { upsertResource as qdrantUpsert, searchResources as qdrantSearch, deleteResource as qdrantDelete, getAllResources as qdrantGetAll } from '@/utils/qdrant-client'
-
 export interface Resource {
   id: string
   url: string
@@ -11,52 +9,58 @@ export interface Resource {
   updatedAt?: number
 }
 
-async function generateEmbedding(text: string): Promise<number[] | null> {
-  try {
-    const { pipeline, env } = await import('@xenova/transformers')
-    env.allowLocalModels = false
-    env.useBrowserCache = true
-    
-    const model = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2', {
-      quantized: true
-    })
-    
-    const output = await model(text, {
-      pooling: 'mean',
-      normalize: true
-    })
-    
-    return Array.from(output.data)
-  } catch (error) {
-    console.error('[Embeddings] Failed to generate embedding:', error)
-    return null
-  }
+const DB_NAME = 'gist-resources'
+const DB_VERSION = 1
+const STORE_NAME = 'resources'
+
+function getDB(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION)
+
+    request.onerror = () => {
+      console.error('[IndexedDB] Failed to open database:', request.error)
+      reject(request.error)
+    }
+
+    request.onsuccess = () => {
+      const db = request.result
+      resolve(db)
+    }
+
+    request.onupgradeneeded = (event) => {
+      const db = (event.target as IDBOpenDBRequest).result
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        const store = db.createObjectStore(STORE_NAME, { keyPath: 'id' })
+        store.createIndex('url', 'url', { unique: false })
+        store.createIndex('title', 'title', { unique: false })
+        store.createIndex('createdAt', 'createdAt', { unique: false })
+        console.log('[IndexedDB] Created object store:', STORE_NAME)
+      }
+    }
+  })
 }
 
-async function getEmbeddingText(resource: Omit<Resource, 'id' | 'createdAt'>): Promise<string> {
-  const parts = [
-    resource.title,
-    resource.url,
-    resource.notes,
-    resource.tags.join(' '),
-    resource.text || ''
-  ]
-  return parts.filter(Boolean).join(' ')
+async function getAllFromDB(): Promise<Resource[]> {
+  const db = await getDB()
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([STORE_NAME], 'readonly')
+    const store = transaction.objectStore(STORE_NAME)
+    const request = store.getAll()
+
+    request.onsuccess = () => {
+      resolve(request.result as Resource[])
+    }
+
+    request.onerror = () => {
+      console.error('[IndexedDB] Failed to get all resources:', request.error)
+      reject(request.error)
+    }
+  })
 }
 
 export async function getAllResources(): Promise<Resource[]> {
   try {
-    const points = await qdrantGetAll()
-    return points.map(p => ({
-      id: p.id,
-      url: p.payload.url,
-      title: p.payload.title,
-      text: p.payload.text,
-      notes: p.payload.notes,
-      tags: p.payload.tags,
-      createdAt: p.payload.createdAt,
-      updatedAt: p.payload.updatedAt
-    }))
+    return await getAllFromDB()
   } catch (error) {
     console.error('[Storage] Failed to get resources:', error)
     return []
@@ -64,47 +68,71 @@ export async function getAllResources(): Promise<Resource[]> {
 }
 
 export async function getResource(id: string): Promise<Resource | null> {
-  const resources = await getAllResources()
-  return resources.find(r => r.id === id) || null
+  const db = await getDB()
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([STORE_NAME], 'readonly')
+    const store = transaction.objectStore(STORE_NAME)
+    const request = store.get(id)
+
+    request.onsuccess = () => {
+      resolve((request.result as Resource) || null)
+    }
+
+    request.onerror = () => {
+      console.error('[IndexedDB] Failed to get resource:', request.error)
+      reject(request.error)
+    }
+  })
 }
 
 export async function saveResource(resource: Omit<Resource, 'id' | 'createdAt'> & { id?: string }): Promise<Resource> {
   const now = Date.now()
+  const existingResources = await getAllFromDB()
+  
+  const existingResource = resource.id ? existingResources.find(r => r.id === resource.id) : null
   
   const newResource: Resource = {
     ...resource,
     id: resource.id || `res_${now}_${Math.random().toString(36).substr(2, 9)}`,
-    createdAt: resource.id ? (await getAllResources()).find(r => r.id === resource.id)?.createdAt || now : now,
+    createdAt: existingResource?.createdAt || now,
     updatedAt: now
   }
   
-  const embeddingText = await getEmbeddingText(newResource)
-  const embedding = await generateEmbedding(embeddingText)
-  
-  if (!embedding) {
-    console.error('[Storage] Failed to generate embedding for resource')
-    throw new Error('Failed to generate embedding')
-  }
-  
-  await qdrantUpsert({
-    id: newResource.id,
-    vector: embedding,
-    payload: {
-      url: newResource.url,
-      title: newResource.title,
-      text: newResource.text,
-      notes: newResource.notes,
-      tags: newResource.tags,
-      createdAt: newResource.createdAt,
-      updatedAt: newResource.updatedAt
+  const db = await getDB()
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([STORE_NAME], 'readwrite')
+    const store = transaction.objectStore(STORE_NAME)
+    const request = store.put(newResource)
+
+    request.onsuccess = () => {
+      console.log('[Storage] Saved resource:', newResource.id)
+      resolve(newResource)
+    }
+
+    request.onerror = () => {
+      console.error('[IndexedDB] Failed to save resource:', request.error)
+      reject(request.error)
     }
   })
-  
-  return newResource
 }
 
 export async function deleteResource(id: string): Promise<void> {
-  await qdrantDelete(id)
+  const db = await getDB()
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([STORE_NAME], 'readwrite')
+    const store = transaction.objectStore(STORE_NAME)
+    const request = store.delete(id)
+
+    request.onsuccess = () => {
+      console.log('[Storage] Deleted resource:', id)
+      resolve()
+    }
+
+    request.onerror = () => {
+      console.error('[IndexedDB] Failed to delete resource:', request.error)
+      reject(request.error)
+    }
+  })
 }
 
 export async function updateResourceTags(id: string, tags: string[]): Promise<Resource | null> {
@@ -133,17 +161,18 @@ export async function searchResources(query: string): Promise<Resource[]> {
   }
   
   try {
-    const results = await qdrantSearch(query, 50)
-    return results.map(r => ({
-      id: r.id,
-      url: r.payload.url,
-      title: r.payload.title,
-      text: r.payload.text,
-      notes: r.payload.notes,
-      tags: r.payload.tags,
-      createdAt: r.payload.createdAt,
-      updatedAt: r.payload.updatedAt
-    }))
+    const allResources = await getAllResources()
+    const lowerQuery = query.toLowerCase()
+    
+    return allResources.filter(resource => {
+      const titleMatch = resource.title.toLowerCase().includes(lowerQuery)
+      const urlMatch = resource.url.toLowerCase().includes(lowerQuery)
+      const notesMatch = resource.notes.toLowerCase().includes(lowerQuery)
+      const textMatch = resource.text?.toLowerCase().includes(lowerQuery)
+      const tagsMatch = resource.tags.some(tag => tag.toLowerCase().includes(lowerQuery))
+      
+      return titleMatch || urlMatch || notesMatch || textMatch || tagsMatch
+    })
   } catch (error) {
     console.error('[Storage] Search failed, returning empty:', error)
     return []

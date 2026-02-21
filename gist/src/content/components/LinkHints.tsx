@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { LinkHint, getLinkHints } from '../utils/link-hints'
 
 interface LinkHintsProps {
@@ -7,36 +7,67 @@ interface LinkHintsProps {
   onClose: () => void
 }
 
+interface HintWithLabel extends LinkHint {
+  hintString: string
+  visible: boolean
+  matchCount: number
+}
+
 export default function LinkHints({ visible, onLinkSelected, onClose }: LinkHintsProps) {
-  const [hints, setHints] = useState<LinkHint[]>([])
+  const [allHints, setAllHints] = useState<HintWithLabel[]>([])
+  const [keyStrokeQueue, setKeyStrokeQueue] = useState<string[]>([])
   const containerRef = useRef<HTMLDivElement>(null)
 
-  const getHintLabel = (index: number): string => {
-    const chars = 'asdfghjkl'
-    const label = index < chars.length ? chars[index] : index.toString()
-    console.log('[LinkHints] getHintLabel(', index, ') =', label)
-    return label
-  }
+  const hintCharacters = 'asdfghjklqwertyuiopzxcvbnm'
 
-  console.log('[LinkHints] Render - visible:', visible, 'hints.length:', hints.length, 'hints sample:', hints.slice(0, 3).map((_, i) => ({ index: i, label: getHintLabel(i) })))
+  const matchingHints = useMemo(() => {
+    return allHints.filter(h => h.visible)
+  }, [allHints])
 
   const activateMode = () => {
     const foundHints = getLinkHints()
-    console.log('[LinkHints] Found', foundHints.length, 'clickable elements')
-    console.log('[LinkHints] Setting hints to state, length:', foundHints.length)
-    const labels = foundHints.map((_, i) => getHintLabel(i))
-    console.log('[LinkHints] Generated labels:', labels)
-    setHints(foundHints)
-    console.log('[LinkHints] Hints set in state')
+    const chars = hintCharacters
+    const count = foundHints.length
+
+    let hints = ['']
+    let offset = 0
+    while ((hints.length - offset < count) || hints.length === 1) {
+      const hint = hints[offset++]
+      for (const ch of chars) {
+        hints.push(ch + hint)
+      }
+    }
+    hints = hints.slice(offset, offset + count)
+    const hintStringList = hints.sort().map(str => str.split('').reverse().join(''))
+
+    const hintsWithLabels: HintWithLabel[] = foundHints.map((hint, index) => ({
+      ...hint,
+      hintString: hintStringList[index],
+      visible: true,
+      matchCount: 0
+    }))
+    setAllHints(hintsWithLabels)
+    setKeyStrokeQueue([])
   }
 
   const deactivateMode = () => {
-    setHints([])
+    setAllHints([])
+    setKeyStrokeQueue([])
+  }
+
+  const updateHintVisibility = (queue: string[]) => {
+    setAllHints(prevHints => {
+      const matchString = queue.join('')
+      return prevHints.map(hint => ({
+        ...hint,
+        visible: hint.hintString.startsWith(matchString),
+        matchCount: matchString.length
+      }))
+    })
   }
 
   const handleKeyDown = (e: KeyboardEvent) => {
-    console.log('[LinkHints] Key pressed:', e.key, 'visible:', visible, 'hints.length:', hints.length)
-    if (!visible || hints.length === 0) return
+    if (!visible || allHints.length === 0) return
 
     if (e.key === 'Escape') {
       e.preventDefault()
@@ -45,91 +76,121 @@ export default function LinkHints({ visible, onLinkSelected, onClose }: LinkHint
       return
     }
 
-    const labelChar = e.key.toLowerCase()
-    console.log('[LinkHints] Looking for label:', labelChar)
-    console.log('[LinkHints] Available labels:', hints.map((_, i) => getHintLabel(i)))
-    const matchingIndex = hints.findIndex((_, index) => getHintLabel(index).toLowerCase() === labelChar)
-    console.log('[LinkHints] Matching index:', matchingIndex)
-
-    if (matchingIndex !== -1) {
+    if (e.key === 'Backspace') {
       e.preventDefault()
       e.stopPropagation()
-      console.log('[LinkHints] Calling onLinkSelected for hint:', matchingIndex)
-      onLinkSelected(hints[matchingIndex])
-      onClose()
+      const newQueue = keyStrokeQueue.slice(0, -1)
+      setKeyStrokeQueue(newQueue)
+      updateHintVisibility(newQueue)
+      return
+    }
+
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      e.stopPropagation()
+      if (matchingHints.length === 1) {
+        onLinkSelected(matchingHints[0])
+        onClose()
+      }
+      return
+    }
+
+    const keyChar = e.key.toLowerCase()
+    if (keyChar.length === 1 && hintCharacters.includes(keyChar)) {
+      e.preventDefault()
+      e.stopPropagation()
+      const newQueue = [...keyStrokeQueue, keyChar]
+      setKeyStrokeQueue(newQueue)
+      updateHintVisibility(newQueue)
     }
   }
 
   useEffect(() => {
-    console.log('[LinkHints] useEffect - visible changed to:', visible)
     if (visible) {
-      console.log('[LinkHints] Activating mode...')
       activateMode()
     } else {
-      console.log('[LinkHints] Deactivating mode...')
       deactivateMode()
     }
   }, [visible])
 
   useEffect(() => {
-    console.log('[LinkHints] Container ref set:', containerRef.current)
-  }, [containerRef.current])
+    if (matchingHints.length === 1 && keyStrokeQueue.length > 0) {
+      const timer = setTimeout(() => {
+        onLinkSelected(matchingHints[0])
+        onClose()
+      }, 200)
+      return () => clearTimeout(timer)
+    }
+  }, [matchingHints, keyStrokeQueue, onLinkSelected, onClose])
 
   useEffect(() => {
-    console.log('[LinkHints] Setting up keyboard listener')
     document.addEventListener('keydown', handleKeyDown, true)
     return () => {
-      console.log('[LinkHints] Removing keyboard listener')
       document.removeEventListener('keydown', handleKeyDown, true)
     }
-  }, [visible, hints])
+  }, [visible, allHints, keyStrokeQueue, matchingHints.length])
 
-  if (!visible || hints.length === 0) {
-    console.log('[LinkHints] Not rendering - visible:', visible, 'hints.length:', hints.length)
+  if (!visible || allHints.length === 0) {
     return null
   }
-  console.log('[LinkHints] Rendering', hints.length, 'hints')
-  console.log('[LinkHints] First 3 hints:', hints.slice(0, 3).map((h, i) => ({ index: i, label: getHintLabel(i), rect: h.rect, text: h.text?.substring(0, 30) })))
 
-  console.log('[LinkHints] About to render container')
+  const renderLabel = (hintString: string, matchCount: number) => {
+    const chars = hintString.split('')
+    return chars.map((char, index) => (
+      <span
+        key={index}
+        style={{
+          color: index < matchCount ? '#000' : '#666',
+          fontWeight: index < matchCount ? 'bold' : 'normal'
+        }}
+      >
+        {char}
+      </span>
+    ))
+  }
 
   return (
-    <div ref={containerRef} className="fixed inset-0 pointer-events-none z-[2147483647]" style={{ background: 'rgba(255,0,0,0.1)' }}>
-      {hints.map((hint, index) => {
-        const label = getHintLabel(index)
-        console.log('[LinkHints] Rendering hint', index, 'with label:', label, 'at top:', hint.rect.top, 'left:', hint.rect.left)
+    <div ref={containerRef} className="fixed inset-0 pointer-events-none z-[2147483647]">
+      {allHints.map((hint, index) => {
+        if (!hint.visible) return null
         return (
           <div
             key={index}
-            className="absolute badge badge-warning pointer-events-auto cursor-pointer hover:badge-warning hover:scale-110 transition-transform"
+            className="absolute badge pointer-events-auto cursor-pointer hover:scale-110 transition-transform"
             style={{
               top: `${hint.rect.top}px`,
               left: `${hint.rect.left}px`,
-              fontSize: '20px',
-              padding: '10px',
-              background: 'yellow',
-              color: 'black',
-              border: '2px solid black',
+              fontSize: '16px',
+              padding: '6px 10px',
+              background: 'rgba(255, 255, 0, 0.9)',
+              color: '#000',
+              border: '2px solid #000',
+              borderRadius: '4px',
               zIndex: 2147483647,
             }}
             onClick={(e) => {
-              console.log('[LinkHints] Clicked label for index:', index)
               e.preventDefault()
               e.stopPropagation()
-              console.log('[LinkHints] Calling onLinkSelected')
               onLinkSelected(hint)
-              console.log('[LinkHints] Called onClose')
               onClose()
             }}
           >
-            {label}
+            {renderLabel(hint.hintString, hint.matchCount)}
           </div>
         )
       })}
       <div className="fixed bottom-5 right-5 bg-base-300 opacity-90 text-base-content px-4 py-3 rounded-box shadow-lg z-[2147483648]">
         <div className="font-semibold text-sm">Link Hints Mode</div>
         <div className="mt-1.5 text-xs opacity-70">
-          Click a number to bookmark • Esc: Exit
+          Type characters to filter • Backspace: Remove • Esc: Exit
+        </div>
+        {keyStrokeQueue.length > 0 && (
+          <div className="mt-1 text-xs font-bold">
+            Typed: {keyStrokeQueue.join('')}
+          </div>
+        )}
+        <div className="mt-1 text-xs">
+          {matchingHints.length} hint{matchingHints.length !== 1 ? 's' : ''} remaining
         </div>
       </div>
     </div>
