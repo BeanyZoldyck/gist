@@ -11,7 +11,14 @@ export default function LinkHints({ visible, onLinkSelected, onClose }: LinkHint
   const [hints, setHints] = useState<LinkHint[]>([])
   const containerRef = useRef<HTMLDivElement>(null)
 
-  console.log('[LinkHints] Render - visible:', visible, 'hints.length:', hints.length)
+  const getHintLabel = (index: number): string => {
+    const chars = 'asdfghjkl'
+    const label = index < chars.length ? chars[index] : index.toString()
+    console.log('[LinkHints] getHintLabel(', index, ') =', label)
+    return label
+  }
+
+  console.log('[LinkHints] Render - visible:', visible, 'hints.length:', hints.length, 'hints sample:', hints.slice(0, 3).map((_, i) => ({ index: i, label: getHintLabel(i) })))
 
   const activateMode = () => {
     const foundHints = getLinkHints()
@@ -84,38 +91,41 @@ export default function LinkHints({ visible, onLinkSelected, onClose }: LinkHint
   console.log('[LinkHints] Rendering', hints.length, 'hints')
   console.log('[LinkHints] First 3 hints:', hints.slice(0, 3).map((h, i) => ({ index: i, label: getHintLabel(i), rect: h.rect, text: h.text?.substring(0, 30) })))
 
-  const getHintLabel = (index: number): string => {
-    const chars = 'asdfghjkl'
-    const label = index < chars.length ? chars[index] : index.toString()
-    console.log('[LinkHints] getHintLabel(', index, ') =', label)
-    return label
-  }
-
   console.log('[LinkHints] About to render container')
 
   return (
-    <div ref={containerRef} className="fixed inset-0 pointer-events-none z-[2147483647]">
-      {hints.map((hint, index) => (
-        <div
-          key={index}
-          className="absolute badge badge-warning pointer-events-auto cursor-pointer hover:badge-warning hover:scale-110 transition-transform"
-          style={{
-            top: `${hint.rect.top}px`,
-            left: `${hint.rect.left}px`,
-          }}
-          onClick={(e) => {
-            console.log('[LinkHints] Clicked label for index:', index)
-            e.preventDefault()
-            e.stopPropagation()
-            console.log('[LinkHints] Calling onLinkSelected')
-            onLinkSelected(hint)
-            console.log('[LinkHints] Called onClose')
-            onClose()
-          }}
-        >
-          <span className="font-bold text-[10px]">{getHintLabel(index)}</span>
-        </div>
-      ))}
+    <div ref={containerRef} className="fixed inset-0 pointer-events-none z-[2147483647]" style={{ background: 'rgba(255,0,0,0.1)' }}>
+      {hints.map((hint, index) => {
+        const label = getHintLabel(index)
+        console.log('[LinkHints] Rendering hint', index, 'with label:', label, 'at top:', hint.rect.top, 'left:', hint.rect.left)
+        return (
+          <div
+            key={index}
+            className="absolute badge badge-warning pointer-events-auto cursor-pointer hover:badge-warning hover:scale-110 transition-transform"
+            style={{
+              top: `${hint.rect.top}px`,
+              left: `${hint.rect.left}px`,
+              fontSize: '20px',
+              padding: '10px',
+              background: 'yellow',
+              color: 'black',
+              border: '2px solid black',
+              zIndex: 2147483647,
+            }}
+            onClick={(e) => {
+              console.log('[LinkHints] Clicked label for index:', index)
+              e.preventDefault()
+              e.stopPropagation()
+              console.log('[LinkHints] Calling onLinkSelected')
+              onLinkSelected(hint)
+              console.log('[LinkHints] Called onClose')
+              onClose()
+            }}
+          >
+            {label}
+          </div>
+        )
+      })}
       <div className="fixed bottom-5 right-5 bg-base-300 opacity-90 text-base-content px-4 py-3 rounded-box shadow-lg z-[2147483648]">
         <div className="font-semibold text-sm">Link Hints Mode</div>
         <div className="mt-1.5 text-xs opacity-70">
