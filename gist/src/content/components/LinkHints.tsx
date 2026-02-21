@@ -55,11 +55,11 @@ export default function LinkHints({ visible, onLinkSelected, onClose }: LinkHint
   }
 
   return (
-    <div ref={containerRef} className="fixed inset-0 pointer-events-none z-[2147483647] overflow-visible">
+    <div ref={containerRef} className="fixed inset-0 pointer-events-none z-[2147483647]">
       {hints.map((hint, index) => (
         <div
           key={index}
-          className="absolute inline-block whitespace-nowrap text-xs font-bold font-helvetica px-[5px] py-[2px] bg-gradient-to-b from-[#fff785] to-[#ffc542] border border-[#c38a22] rounded-[3px] shadow-md text-[#302505] uppercase min-w-[16px] text-center pointer-events-auto cursor-pointer hover:scale-110 hover:bg-gradient-to-b hover:from-[#ff6b6b] hover:to-[#ee5a5a] hover:border-[#c0392b] hover:text-white hover:shadow-lg transition-transform"
+          className="absolute badge badge-warning pointer-events-auto cursor-pointer hover:badge-warning hover:scale-110 transition-transform"
           style={{
             top: `${hint.rect.top}px`,
             left: `${hint.rect.left}px`,
@@ -71,12 +71,12 @@ export default function LinkHints({ visible, onLinkSelected, onClose }: LinkHint
             onClose()
           }}
         >
-          <span className="font-bold">{getHintLabel(index)}</span>
+          <span className="font-bold text-[10px]">{getHintLabel(index)}</span>
         </div>
       ))}
-      <div className="fixed bottom-5 right-5 bg-black/80 text-white px-4 py-3 rounded-lg text-xs font-helvetica z-[2147483648]">
-        <div>Link Hints Mode</div>
-        <div className="mt-1.5 opacity-80">
+      <div className="fixed bottom-5 right-5 bg-base-300 opacity-90 text-base-content px-4 py-3 rounded-box shadow-lg z-[2147483648]">
+        <div className="font-semibold text-sm">Link Hints Mode</div>
+        <div className="mt-1.5 text-xs opacity-70">
           Click a label to save link • Esc: Exit
         </div>
       </div>

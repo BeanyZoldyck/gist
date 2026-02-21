@@ -105,86 +105,90 @@ export default function InputCompletion({
   return createPortal(
     <div
       ref={menuRef}
-      className="fixed bg-[#1e1e1e] border border-[#3e3e3e] rounded-lg shadow-2xl max-h-[400px] overflow-y-auto z-[2147483648] font-sans text-sm w-[350px]"
+      className="dropdown dropdown-end dropdown-content z-[2147483648] bg-base-300 rounded-box shadow-xl max-h-[400px] overflow-y-auto w-[350px]"
       style={{
+        position: 'fixed',
         top: `${position.top}px`,
         left: `${position.left}px`,
       }}
     >
-      <div className="px-4 py-2.5 border-b border-[#3e3e3e] bg-[#252525] font-medium text-white text-xs uppercase tracking-wide">
-        Insert Saved Resource
-      </div>
-
-      {resources.length === 0 ? (
-        <div className="p-5 text-center text-[#888] text-xs">
-          <div className="text-2xl mb-2 opacity-50">📂</div>
-          <div>No resources saved yet</div>
-          <div className="mt-2 text-[11px] opacity-70">
-            Use link hints (Ctrl+Shift+L) to save links
-          </div>
+      <div className="bg-base-300 rounded-box">
+        <div className="p-2 border-b border-base-200">
+          <div className="text-xs font-semibold opacity-50 uppercase">Insert Saved Resource</div>
         </div>
-      ) : (
-        <>
-          {query && (
-            <div className="px-[14px] py-2 bg-[#252525] border-b border-[#2d2d2d]">
-              <input
-                ref={inputRef}
-                type="text"
-                value={query}
-                onChange={handleQueryChange}
-                placeholder="Search resources..."
-                autoFocus
-                className="w-full bg-[#1e1e1e] border border-[#3e3e3e] rounded px-3 py-2 text-white text-[13px] outline-none"
-              />
-            </div>
-          )}
 
-          <div>
-            {resources.map((resource, index) => (
-              <div
-                key={resource.id}
-                data-index={index}
-                className={`px-4 py-2.5 cursor-pointer border-b border-[#2d2d2d] transition-colors duration-150 ${index === activeIndex ? 'bg-[#2d5a2d] border-[#3d7a3d]' : 'hover:bg-[#2d5a2d]/50'}`}
-                onClick={() => handleItemClick(resource)}
-              >
-                <div className={`font-medium text-white mb-1 overflow-hidden text-ellipsis whitespace-nowrap ${index === activeIndex ? 'text-[#e8f5e9]' : ''}`}>{resource.title}</div>
-                <div className={`text-[#888] text-[11px] mb-1.5 overflow-hidden text-ellipsis whitespace-nowrap ${index === activeIndex ? 'text-[#a8d8a8]' : ''}`}>{resource.url}</div>
-                <div className={`text-[#aaa] text-[11px] leading-relaxed overflow-hidden line-clamp-2 ${index === activeIndex ? 'text-[#c8e8c8]' : ''}`}>
-                  {getResourcePreviewText(resource)}
-                </div>
-                <div className="flex items-center gap-2 mt-1.5">
-                  {resource.tags.length > 0 && (
-                    <div className="flex gap-1 flex-wrap">
-                      {resource.tags.slice(0, 3).map(tag => (
-                        <span key={tag} className={`text-[10px] px-1.5 py-0.5 rounded ${index === activeIndex ? 'bg-[#4e7a4e] text-[#e8f5e9]' : 'bg-[#3e3e3e] text-[#aaa]'}`}>
-                          {tag}
-                        </span>
-                      ))}
-                      {resource.tags.length > 3 && (
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${index === activeIndex ? 'bg-[#4e7a4e] text-[#e8f5e9]' : 'bg-[#3e3e3e] text-[#aaa]'}`}>
-                          +{resource.tags.length - 3}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                  <span className={`text-[10px] ml-auto ${index === activeIndex ? 'text-[#98c898]' : 'text-[#666]'}`}>
-                    {formatResourceDate(resource.createdAt)}
-                  </span>
-                </div>
+        {resources.length === 0 ? (
+          <div className="p-5 text-center opacity-50 text-xs">
+            <div className="text-2xl mb-2">📂</div>
+            <div>No resources saved yet</div>
+            <div className="mt-2 text-[10px] opacity-70">
+              Use link hints (Ctrl+Shift+L) to save links
+            </div>
+          </div>
+        ) : (
+          <>
+            {query && (
+              <div className="p-2 bg-base-200 border-b border-base-200">
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={query}
+                  onChange={handleQueryChange}
+                  placeholder="Search resources..."
+                  autoFocus
+                  className="input input-bordered input-sm w-full"
+                />
               </div>
-            ))}
-          </div>
+            )}
 
-          <div className="px-4 py-2 border-t border-[#3e3e3e] bg-[#252525] text-[#666] text-[11px] flex justify-between items-center">
-            <div className="flex gap-3">
-              <span className="flex gap-0.5"><kbd className="bg-[#3e3e3e] px-1.5 py-0.5 rounded text-[#aaa] font-mono text-[10px]">↑</kbd><kbd className="bg-[#3e3e3e] px-1.5 py-0.5 rounded text-[#aaa] font-mono text-[10px]">↓</kbd> Navigate</span>
-              <span><kbd className="bg-[#3e3e3e] px-1.5 py-0.5 rounded text-[#aaa] font-mono text-[10px]">Enter</kbd> Insert</span>
-              <span><kbd className="bg-[#3e3e3e] px-1.5 py-0.5 rounded text-[#aaa] font-mono text-[10px]">Esc</kbd> Close</span>
+            <ul className="menu menu-compact bg-base-100 w-full p-0">
+              {resources.map((resource, index) => (
+                <li key={resource.id}>
+                  <div
+                    data-index={index}
+                    className={`cursor-pointer ${index === activeIndex ? 'active' : ''}`}
+                    onClick={() => handleItemClick(resource)}
+                  >
+                    <div className="flex flex-col gap-1 p-2">
+                      <div className="font-medium truncate">{resource.title}</div>
+                      <div className="text-xs opacity-70 truncate">{resource.url}</div>
+                      <div className="text-xs opacity-60 line-clamp-2">{getResourcePreviewText(resource)}</div>
+                      <div className="flex items-center gap-2 mt-1">
+                        {resource.tags.length > 0 && (
+                          <div className="flex gap-1 flex-wrap">
+                            {resource.tags.slice(0, 3).map(tag => (
+                              <span key={tag} className="badge badge-xs badge-ghost">
+                                {tag}
+                              </span>
+                            ))}
+                            {resource.tags.length > 3 && (
+                              <span className="badge badge-xs badge-ghost">
+                                +{resource.tags.length - 3}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                        <span className="text-[10px] opacity-50 ml-auto">
+                          {formatResourceDate(resource.createdAt)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+
+            <div className="p-2 border-t border-base-200 bg-base-200 opacity-50 text-[11px] flex justify-between items-center">
+              <div className="flex gap-3">
+                <span className="flex gap-0.5"><kbd className="kbd kbd-xs">↑</kbd><kbd className="kbd kbd-xs">↓</kbd> Navigate</span>
+                <span><kbd className="kbd kbd-xs">Enter</kbd> Insert</span>
+                <span><kbd className="kbd kbd-xs">Esc</kbd> Close</span>
+              </div>
+              <div>{resources.length} resource{resources.length !== 1 ? 's' : ''}</div>
             </div>
-            <div>{resources.length} resource{resources.length !== 1 ? 's' : ''}</div>
-          </div>
-        </>
-      )}
+          </>
+        )}
+      </div>
     </div>,
     document.body
   )
