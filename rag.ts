@@ -7,7 +7,7 @@ dotenv.config();
 
 // 1. Initialize global clients and constants
 const ai = new GoogleGenAI({});
-const qdrant = new QdrantClient({ host: 'localhost', port: 6333 });
+const qdrant = new QdrantClient({ host: '127.0.0.1', port: 6333,checkCompatibility:false });
 
 const COLLECTION_NAME = "my_knowledge_base";
 const VECTOR_SIZE = 768; // Must match Gemini's output configuration
@@ -110,4 +110,4 @@ if (require.main === module) {
     }
 
     runTest().catch(console.error);
-}unRAGPipeline().catch(console.error);
+}
