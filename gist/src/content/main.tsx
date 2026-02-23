@@ -2,6 +2,7 @@ import { StrictMode, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import InputOverlay from './components/InputOverlay'
 import { isTextInput, getInputInfo, getElementPosition, InputFieldInfo } from './utils/dom-utils'
+import { extractYouTubeMetadata } from './utils/youtube-metadata'
 
 console.log('[CRXJS] Input field detector loaded!')
 
@@ -11,6 +12,19 @@ window.addEventListener('error', (event) => {
     event.stopPropagation()
     console.warn('[CRXJS] Extension context invalidated. Reload the page to restore full functionality.')
   }
+})
+
+// Handle messages from background script
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message.type === 'GET_YOUTUBE_METADATA') {
+    try {
+      const metadata = extractYouTubeMetadata()
+      sendResponse({ success: true, data: metadata })
+    } catch (error) {
+      sendResponse({ success: false, error: error instanceof Error ? error.message : String(error) })
+    }
+  }
+  return true
 })
 
 let overlayRoot: any = null

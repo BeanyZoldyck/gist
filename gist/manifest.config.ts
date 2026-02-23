@@ -19,6 +19,7 @@ export default defineManifest({
     'storage',
     'tabs',
     'activeTab',
+    'notifications',
   ],
   host_permissions: [
     'http://localhost:5173/*',
@@ -37,6 +38,12 @@ export default defineManifest({
         default: 'Ctrl+Shift+S',
       },
       description: 'Save current URL to search',
+    },
+    save_with_metadata: {
+      suggested_key: {
+        default: 'Ctrl+Shift+H',
+      },
+      description: 'Save current URL with metadata (YouTube: video info)',
     },
   },
   options_ui: {
