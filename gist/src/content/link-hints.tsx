@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import LinkHints from './components/LinkHints'
 import { LinkHint } from './utils/link-hints'
 import { saveResource, Resource } from './utils/resource-storage'
+import { getPageDescription, extractLinkContext } from './utils/dom-utils'
 
 const LINK_HINTS_MODE_KEY = 'gist_link_hints_mode_active'
 
@@ -70,14 +71,24 @@ function LinkHintsApp() {
     console.log('[LinkHints] handleLinkSelected called with hint:', hint)
     const url = hint.href || hint.element.getAttribute('data-href') || window.location.href
     const title = hint.text || new URL(url).hostname || 'Untitled'
-    console.log('[LinkHints] URL:', url, 'Title:', title)
+    
+    const pageUrl = window.location.href
+    const pageTitle = document.title
+    const pageDescription = getPageDescription()
+    const linkContext = extractLinkContext(hint.element)
+    
+    console.log('[LinkHints] URL:', url, 'Title:', title, 'Page URL:', pageUrl, 'Page Title:', pageTitle)
 
     const resource: Omit<Resource, 'id' | 'createdAt'> = {
       url,
       title,
       text: hint.text,
       notes: '',
-      tags: []
+      tags: [],
+      pageUrl,
+      pageTitle,
+      pageDescription,
+      linkContext
     }
 
     try {

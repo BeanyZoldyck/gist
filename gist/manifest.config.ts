@@ -25,7 +25,7 @@ export default defineManifest({
   commands: {
     toggle_side_panel: {
       suggested_key: {
-        default: 'Ctrl+Shift+K',
+        default: 'Ctrl+K',
       },
       description: 'Toggle Side Panel',
     },
