@@ -10,6 +10,7 @@ export default function AIChatPanel() {
   const [model, setModel] = useState(import.meta.env.VITE_AI_MODEL || 'openrouter/free')
   const [baseUrl, setBaseUrl] = useState(import.meta.env.VITE_AI_BASE_URL || 'https://openrouter.ai/api/v1')
   const [pageSnapshot, setPageSnapshot] = useState<string>('')
+  const [aiConfigured, setAiConfigured] = useState<boolean>(false)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -17,16 +18,35 @@ export default function AIChatPanel() {
 
   useEffect(() => {
     chrome.storage.local.get(['aiApiKey', 'aiModel', 'aiBaseUrl'], (result: any) => {
-      if (result.aiApiKey) {
-        setApiKey(result.aiApiKey)
+      // Resolve effective values: prefer stored values, fall back to build-time env/defaults
+      const effectiveApiKey = result.aiApiKey ?? (import.meta.env.VITE_AI_API_KEY || '')
+      const effectiveModel = result.aiModel ?? (import.meta.env.VITE_AI_MODEL || 'openrouter/free')
+      const effectiveBase = result.aiBaseUrl ?? (import.meta.env.VITE_AI_BASE_URL || 'https://openrouter.ai/api/v1')
+
+      setApiKey(effectiveApiKey)
+      setModel(effectiveModel)
+      setBaseUrl(effectiveBase)
+
+      // Only set assistant config when we have an API key (to avoid setting an invalid/empty config)
+      if (effectiveApiKey) {
         setAssistantConfig({
-          apiKey: result.aiApiKey,
-          model: result.aiModel || 'glm-4.7-flash',
-          baseUrl: result.aiBaseUrl || 'https://api.z.ai/api/paas/v4'
+          apiKey: effectiveApiKey,
+          model: effectiveModel,
+          baseUrl: effectiveBase
         })
+        setAiConfigured(true)
       }
-      if (result.aiModel) setModel(result.aiModel)
-      if (result.aiBaseUrl) setBaseUrl(result.aiBaseUrl)
+      
+      // Also verify via background helper in case storage/defaults differ
+      try {
+        chrome.runtime.sendMessage({ type: 'CHECK_AI_CONFIG' }, (resp: any) => {
+          if (resp && resp.data && typeof resp.data.configured === 'boolean') {
+            setAiConfigured(resp.data.configured)
+          }
+        })
+      } catch (e) {
+        // ignore — leave aiConfigured based on effectiveApiKey
+      }
     })
   }, [])
 
@@ -73,6 +93,8 @@ export default function AIChatPanel() {
       baseUrl
     })
     chrome.storage.local.set({ aiApiKey: apiKey, aiModel: model, aiBaseUrl: baseUrl })
+    // Mark configured if API key provided
+    if (apiKey) setAiConfigured(true)
     setShowSettings(false)
   }
 
@@ -93,6 +115,17 @@ export default function AIChatPanel() {
   }
 
   const handleSendMessage = async () => {
+    if (!aiConfigured) {
+      const info: AIMessage = {
+        id: `msg_${Date.now()}`,
+        role: 'assistant',
+        content: '⚠️ AI is not configured. Open settings (⚙️) and save your API key to enable assistant.',
+        timestamp: Date.now()
+      }
+      setMessages(prev => [...prev, info])
+      return
+    }
+
     if (!input.trim() || isLoading) return
 
     const userMessage = input.trim()
@@ -271,6 +304,9 @@ export default function AIChatPanel() {
 
       <div className="ai-header">
         <h2>AI Assistant</h2>
+        <div className="ai-config-status" style={{ marginLeft: 12 }}>
+          {aiConfigured ? <span title="AI configured">✅ Configured</span> : <span title="AI not configured">❌ Not configured</span>}
+        </div>
         <div className="header-actions">
           <button onClick={() => setShowSettings(true)} className="btn-icon" title="Settings">
             ⚙️
@@ -341,15 +377,15 @@ export default function AIChatPanel() {
               handleSendMessage()
             }
           }}
-          placeholder="Ask me to automate something... (e.g., 'Click on the submit button')"
+          placeholder={aiConfigured ? "Ask me to automate something... (e.g., 'Click on the submit button')" : "AI not configured — open settings (⚙️) to set API key"}
           className="ai-input"
-          disabled={isLoading}
+          disabled={isLoading || !aiConfigured}
           rows={3}
         />
         <button 
-          onClick={handleSendMessage} 
-          className="btn-send" 
-          disabled={!input.trim() || isLoading}
+          onClick={handleSendMessage}
+          className="btn-send"
+          disabled={!aiConfigured || !input.trim() || isLoading}
         >
           Send
         </button>

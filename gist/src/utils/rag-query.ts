@@ -1,5 +1,66 @@
 import { searchResources } from './qdrant-client'
 
+const DB_NAME = 'gist-resources'
+const DB_VERSION = 2
+const STORE_NAME = 'resources'
+
+function openDB(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION)
+    request.onsuccess = () => resolve(request.result)
+    request.onerror = () => reject(request.error)
+  })
+}
+
+async function getAllResourcesFromDB(): Promise<any[]> {
+  try {
+    const db = await openDB()
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction([STORE_NAME], 'readonly')
+      const store = tx.objectStore(STORE_NAME)
+      const request = store.getAll()
+      request.onsuccess = () => resolve(request.result || [])
+      request.onerror = () => reject(request.error)
+    })
+  } catch (e) {
+    console.error('[RAG] DB open error:', e)
+    return []
+  }
+}
+
+async function searchFromIndexedDB(query: string, limit: number = 5): Promise<any[]> {
+  const allResources = await getAllResourcesFromDB()
+  console.log('[RAG] Total resources in DB:', allResources.length)
+  
+  if (!query || allResources.length === 0) {
+    return allResources.slice(0, limit).map((r: any) => ({
+      payload: { url: r.url, title: r.title, notes: r.notes || '', text: r.text || '' },
+      score: 0.5
+    }))
+  }
+  
+  const lowerQuery = query.toLowerCase()
+  const scored = allResources.map((r: any) => {
+    let score = 0
+    if (r.title?.toLowerCase().includes(lowerQuery)) score += 3
+    if (r.url?.toLowerCase().includes(lowerQuery)) score += 2
+    if (r.notes?.toLowerCase().includes(lowerQuery)) score += 2
+    if (r.tags?.some((t: string) => t.toLowerCase().includes(lowerQuery))) score += 2
+    if (r.text?.toLowerCase().includes(lowerQuery)) score += 1
+    return { resource: r, score }
+  })
+  
+  scored.sort((a, b) => b.score - a.score)
+  
+  const filtered = scored.filter(s => s.score > 0)
+  console.log('[RAG] Matched resources:', filtered.length)
+  
+  return filtered.slice(0, limit).map((s: any) => ({
+    payload: { url: s.resource.url, title: s.resource.title, notes: s.resource.notes || '', text: s.resource.text || '' },
+    score: s.score / 10
+  }))
+}
+
 export interface RAGConfig {
   apiKey: string
   baseUrl: string
@@ -43,11 +104,28 @@ export async function queryWithLLM(question: string, maxSources: number = 5): Pr
     throw new Error('AI not configured. Please set up AI in extension settings.')
   }
 
+  console.log('[RAG] Starting search for:', question)
+
   let searchResults: any[] = []
+  
+  // Try IndexedDB first (more reliable) - get all resources and filter locally
   try {
-    searchResults = await searchResources(question, maxSources)
+    console.log('[RAG] Trying IndexedDB search...')
+    searchResults = await searchFromIndexedDB(question, maxSources * 2)
+    console.log('[RAG] IndexedDB returned:', searchResults.length, 'results')
   } catch (error) {
-    console.log('[RAG] Search failed, using keyword fallback:', error)
+    console.log('[RAG] IndexedDB fallback also failed:', error)
+  }
+
+  // Try Qdrant as secondary
+  if (searchResults.length === 0) {
+    try {
+      console.log('[RAG] Trying Qdrant search...')
+      searchResults = await searchResources(question, maxSources)
+      console.log('[RAG] Qdrant returned:', searchResults.length, 'results')
+    } catch (error) {
+      console.log('[RAG] Qdrant search failed:', error)
+    }
   }
 
   const sources: Source[] = searchResults.map((result: any) => ({

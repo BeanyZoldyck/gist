@@ -1,5 +1,4 @@
 import { searchResources as searchQdrant, upsertResource, deleteResource as deleteFromQdrant } from './utils/qdrant-client'
-import { queryWithLLM, getAIConfig } from './utils/rag-query'
 
 export interface Resource {
   id: string
@@ -690,14 +689,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
             return
           }
 
-          const aiConfig = await getAIConfig()
+          const aiConfig = await getAIRAGConfig()
           if (!aiConfig) {
             sendResponse({ success: false, error: 'AI not configured. Please set up AI in extension settings.' })
             return
           }
 
           try {
-            const result = await queryWithLLM(question, 5)
+            const result = await queryWithLLM(question, 5, aiConfig)
             sendResponse({ success: true, data: result })
           } catch (error) {
             console.error('[Background] RAG query failed:', error)
@@ -706,7 +705,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           break
         }
         case 'CHECK_AI_CONFIG': {
-          const config = await getAIConfig()
+          const config = await getAIRAGConfig()
           sendResponse({ success: true, data: { configured: !!config } })
           break
         }
@@ -771,5 +770,151 @@ async function handleAutomationAction(action: string, payload: any, sender: chro
       })
       return response
     }
+  }
+}
+
+interface RAGConfig {
+  apiKey: string
+  baseUrl: string
+  model: string
+}
+
+interface RAGResponse {
+  answer: string
+  sources: { url: string; title: string; snippet: string; score: number }[]
+}
+
+async function getAIRAGConfig(): Promise<RAGConfig | null> {
+  const result = await chrome.storage.local.get(['aiApiKey', 'aiModel', 'aiBaseUrl']) as {
+    aiApiKey?: string
+    aiModel?: string
+    aiBaseUrl?: string
+  }
+  
+  if (!result.aiApiKey || !result.aiBaseUrl) {
+    return null
+  }
+  
+  return {
+    apiKey: result.aiApiKey,
+    baseUrl: result.aiBaseUrl,
+    model: result.aiModel || 'openai/gpt-4o'
+  }
+}
+
+async function searchResourcesForRAG(query: string, limit: number = 5): Promise<any[]> {
+  const allResources = await getAllFromDB()
+  console.log('[RAG] Total resources:', allResources.length)
+  
+  if (!query || allResources.length === 0) {
+    return allResources.slice(0, limit).map((r: Resource) => ({
+      payload: { url: r.url, title: r.title, notes: r.notes || '', text: r.text || '' },
+      score: 0.5
+    }))
+  }
+  
+  const lowerQuery = query.toLowerCase()
+  const scored = allResources.map((r: Resource) => {
+    let score = 0
+    if (r.title?.toLowerCase().includes(lowerQuery)) score += 3
+    if (r.url?.toLowerCase().includes(lowerQuery)) score += 2
+    if (r.notes?.toLowerCase().includes(lowerQuery)) score += 2
+    if (r.tags?.some((t: string) => t.toLowerCase().includes(lowerQuery))) score += 2
+    if (r.text?.toLowerCase().includes(lowerQuery)) score += 1
+    return { resource: r, score }
+  })
+  
+  scored.sort((a, b) => b.score - a.score)
+  
+  const filtered = scored.filter(s => s.score > 0)
+  console.log('[RAG] Matched:', filtered.length)
+  
+  return filtered.slice(0, limit).map((s: any) => ({
+    payload: { url: s.resource.url, title: s.resource.title, notes: s.resource.notes || '', text: s.resource.text || '' },
+    score: s.score / 10
+  }))
+}
+
+async function queryWithLLM(question: string, maxSources: number, config: RAGConfig): Promise<RAGResponse> {
+  let searchResults = await searchResourcesForRAG(question, maxSources * 2)
+  
+  // Also try Qdrant
+  try {
+    const qdrantResults = await searchQdrant(question, maxSources)
+    if (qdrantResults.length > 0) {
+      searchResults = [...searchResults, ...qdrantResults]
+      // Dedupe
+      const seen = new Set()
+      searchResults = searchResults.filter(s => {
+        const key = s.payload?.url || s.url
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+      }).slice(0, maxSources)
+    }
+  } catch (e) {
+    console.log('[RAG] Qdrant failed:', e)
+  }
+
+  const sources = searchResults.map((result: any) => ({
+    url: result.payload?.url || '',
+    title: result.payload?.title || '',
+    snippet: result.payload?.notes || result.payload?.text || '',
+    score: result.score || 0
+  }))
+
+  if (sources.length === 0) {
+    return {
+      answer: "I couldn't find any relevant saved links to answer your question. Try saving some links first!",
+      sources: []
+    }
+  }
+
+  const context = sources
+    .map((s, i) => `[Source ${i + 1}]: ${s.title}\nURL: ${s.url}\nContent: ${s.snippet}`)
+    .join('\n\n')
+
+  const systemPrompt = `You are a helpful assistant that answers questions based on the user's saved links/notes. 
+
+Answer the user's question using ONLY the provided sources. If the sources don't contain enough information to answer the question, say so clearly.
+
+Sources:
+${context}
+
+Question: ${question}
+
+Answer:`
+
+  const answer = await callLLM(config, systemPrompt)
+
+  return { answer, sources }
+}
+
+async function callLLM(config: RAGConfig, prompt: string): Promise<string> {
+  try {
+    const response = await fetch(`${config.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${config.apiKey}`
+      },
+      body: JSON.stringify({
+        model: config.model,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.7,
+        max_tokens: 2000
+      })
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`AI API error: ${response.status} - ${errorText}`)
+    }
+
+    const data = await response.json()
+    return data.choices?.[0]?.message?.content || 'No response generated'
+  } catch (error) {
+    console.error('[RAG] LLM call failed:', error)
+    throw error
   }
 }
