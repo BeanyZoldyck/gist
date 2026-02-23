@@ -18,6 +18,18 @@ export default defineManifest({
     'sidePanel',
     'storage',
   ],
+  host_permissions: [
+    'http://localhost:5173/*',
+    'ws://localhost:5173/*',
+  ],
+  commands: {
+    toggle_side_panel: {
+      suggested_key: {
+        default: 'Ctrl+Shift+K',
+      },
+      description: 'Toggle Side Panel',
+    },
+  },
   options_ui: {
     page: 'src/settings/index.html',
     open_in_tab: true,
@@ -38,5 +50,8 @@ export default defineManifest({
   ],
   side_panel: {
     default_path: 'src/sidepanel/index.html',
+  },
+  background: {
+    service_worker: 'src/background.ts',
   },
 })

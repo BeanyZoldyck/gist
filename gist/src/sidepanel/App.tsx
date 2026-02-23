@@ -18,6 +18,17 @@ export default function App() {
     loadResources()
   }, [])
 
+  useEffect(() => {
+    const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }) => {
+      if (changes.gist_resources) {
+        loadResources()
+      }
+    }
+
+    chrome.storage.onChanged.addListener(handleStorageChange)
+    return () => chrome.storage.onChanged.removeListener(handleStorageChange)
+  }, [])
+
   const loadResources = async () => {
     setLoading(true)
     const loaded = await getAllResources()
