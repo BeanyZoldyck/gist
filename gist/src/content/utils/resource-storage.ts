@@ -7,6 +7,10 @@ export interface Resource {
   tags: string[]
   createdAt: number
   updatedAt?: number
+  pageUrl: string
+  pageTitle: string
+  pageDescription?: string
+  linkContext?: string
 }
 
 interface MessageResponse<T = any> {
@@ -66,6 +70,16 @@ export async function deleteResource(id: string): Promise<void> {
     throw error
   }
 }
+
+export async function deleteAllResources(): Promise<void> {
+  try {
+    await sendMessage<void>({ type: 'DELETE_ALL_RESOURCES' })
+  } catch (error) {
+    console.error('[Storage] Failed to delete all resources:', error)
+    throw error
+  }
+}
+
 
 export async function updateResourceTags(id: string, tags: string[]): Promise<Resource | null> {
   try {

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Resource, getAllResources, deleteResource, updateResourceTags, updateResourceNotes, searchResources, formatResourceDate, getResourcePreviewText } from '../content/utils/resource-storage'
+import { Resource, getAllResources, deleteResource, deleteAllResources, updateResourceTags, updateResourceNotes, searchResources, formatResourceDate, getResourcePreviewText } from '../content/utils/resource-storage'
 
 interface EditModal {
   resource: Resource | null
@@ -13,9 +13,29 @@ export default function App() {
   const [editModal, setEditModal] = useState<EditModal>({ resource: null, show: false })
   const [editTags, setEditTags] = useState('')
   const [editNotes, setEditNotes] = useState('')
+  const [hoveredCard, setHoveredCard] = useState<string | null>(null)
+  const [hoveredTitle, setHoveredTitle] = useState<string | null>(null)
 
   useEffect(() => {
+    console.log('[SidePanel] App mounted')
+    const newPort = chrome.runtime.connect({ name: 'sidePanel' })
+    console.log('[SidePanel] Connected to background script')
+    
+    newPort.onMessage.addListener(() => {
+      console.log('[SidePanel] Received message from background')
+      newPort.postMessage({ type: 'sidePanelActive' })
+    })
+
+    newPort.onDisconnect.addListener(() => {
+      console.log('[SidePanel] Disconnected from background script')
+    })
+
     loadResources()
+    
+    return () => {
+      console.log('[SidePanel] App unmounting')
+      newPort.disconnect()
+    }
   }, [])
 
   useEffect(() => {
@@ -57,33 +77,62 @@ export default function App() {
 
   const handleDelete = async (id: string) => {
     const confirmed = await new Promise<boolean>((resolve) => {
-      const modal = document.createElement('dialog')
-      modal.className = 'modal modal-open'
-      modal.innerHTML = `
+      const overlay = document.createElement('div')
+      overlay.className = 'modal-overlay'
+      overlay.innerHTML = `
         <div class="modal-box">
-          <h3 class="font-bold text-lg">Delete Resource</h3>
-          <p class="py-4">Are you sure you want to delete this resource?</p>
-          <div class="modal-action">
-            <form method="dialog" class="btn-cancel">
-              <button class="btn">Cancel</button>
-            </form>
-            <form method="dialog" class="btn-confirm">
-              <button class="btn btn-error">Delete</button>
-            </form>
+          <div class="modal-title">Delete Resource</div>
+          <div class="modal-text">Are you sure you want to delete this resource?</div>
+          <div class="modal-actions">
+            <button class="btn-cancel">Cancel</button>
+            <button class="btn-delete">Delete</button>
           </div>
         </div>
-        <form method="dialog" class="modal-backdrop">
-          <button>close</button>
-        </form>
       `
-      document.body.appendChild(modal)
-
-      modal.querySelector('.btn-cancel button')?.addEventListener('click', () => resolve(false))
-      modal.querySelector('.btn-confirm button')?.addEventListener('click', () => resolve(true))
+      document.body.appendChild(overlay)
+      overlay.querySelector('.btn-cancel')?.addEventListener('click', () => {
+        document.body.removeChild(overlay)
+        resolve(false)
+      })
+      overlay.querySelector('.btn-delete')?.addEventListener('click', () => {
+        document.body.removeChild(overlay)
+        resolve(true)
+      })
     })
 
     if (confirmed) {
       await deleteResource(id)
+      await loadResources()
+    }
+  }
+
+  const handleDeleteAll = async () => {
+    const confirmed = await new Promise<boolean>((resolve) => {
+      const overlay = document.createElement('div')
+      overlay.className = 'modal-overlay'
+      overlay.innerHTML = `
+        <div class="modal-box">
+          <div class="modal-title modal-title-danger">Delete All Resources</div>
+          <div class="modal-text">Are you sure you want to delete all resources? This action cannot be undone.</div>
+          <div class="modal-actions">
+            <button class="btn-cancel">Cancel</button>
+            <button class="btn-delete">Delete All</button>
+          </div>
+        </div>
+      `
+      document.body.appendChild(overlay)
+      overlay.querySelector('.btn-cancel')?.addEventListener('click', () => {
+        document.body.removeChild(overlay)
+        resolve(false)
+      })
+      overlay.querySelector('.btn-delete')?.addEventListener('click', () => {
+        document.body.removeChild(overlay)
+        resolve(true)
+      })
+    })
+
+    if (confirmed) {
+      await deleteAllResources()
       await loadResources()
     }
   }
@@ -115,73 +164,105 @@ export default function App() {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-base-200">
-      <div className="p-4 border-b border-base-300">
-        <h2 className="text-lg font-semibold mb-3">Saved Resources</h2>
+    <div className="app-container">
+      <div className="app-header">
+        <div className="header-top">
+          <h2 className="header-title">RESOURCES</h2>
+          {resources.length > 0 && (
+            <button
+              onClick={handleDeleteAll}
+              className="btn-delete-all"
+            >
+              DELETE ALL
+            </button>
+          )}
+        </div>
         <input
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search resources..."
-          className="input input-bordered w-full"
+          placeholder="Filter resources..."
+          className="search-input"
         />
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="resource-list">
         {loading ? (
-          <div className="text-center opacity-50 mt-10">Loading...</div>
+          <div className="empty-state">
+            <span className="empty-icon">⟳</span>
+            <div className="empty-text">Loading...</div>
+          </div>
         ) : resources.length === 0 ? (
-          <div className="text-center opacity-50 mt-10">
-            <p className="text-4xl mb-2">📂</p>
-            <p>No resources saved yet</p>
-            <p className="text-sm mt-2">Use link hints (Ctrl+Shift+L) to save links</p>
+          <div className="empty-state">
+            <span className="empty-icon large">∅</span>
+            <div className="empty-text empty-title">No resources found</div>
+            <div className="empty-text empty-subtitle">Use Ctrl+Shift+L to capture links</div>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="resources">
             {resources.map((resource) => (
               <div
                 key={resource.id}
-                className="card bg-base-100 shadow-sm border border-base-300"
+                className={`resource-card ${hoveredCard === resource.id ? 'resource-card-hover' : ''}`}
+                onMouseEnter={() => setHoveredCard(resource.id)}
+                onMouseLeave={() => setHoveredCard(null)}
               >
-                <div className="card-body p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <h3
-                        className="card-title text-base cursor-pointer hover:text-primary"
-                        onClick={() => openResource(resource.url)}
-                      >
-                        {resource.title}
-                      </h3>
-                      <p className="text-xs opacity-70 truncate mt-1">{resource.url}</p>
-                      {resource.tags.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-2">
-                          {resource.tags.map((tag, i) => (
-                            <span key={i} className="badge badge-sm badge-ghost">
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                      {resource.notes && (
-                        <p className="text-xs opacity-60 mt-2 line-clamp-2">{getResourcePreviewText(resource)}</p>
-                      )}
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      <button
-                        onClick={() => openEditModal(resource)}
-                        className="btn btn-xs btn-ghost text-primary"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDelete(resource.id)}
-                        className="btn btn-xs btn-ghost text-error"
-                      >
-                        Delete
-                      </button>
-                    </div>
+                <div>
+                  <div
+                    className={`resource-title ${hoveredTitle === resource.id ? 'resource-title-hover' : ''}`}
+                    onClick={() => openResource(resource.url)}
+                    onMouseEnter={() => setHoveredTitle(resource.id)}
+                    onMouseLeave={() => setHoveredTitle(null)}
+                  >
+                    {resource.title}
                   </div>
-                  <div className="text-[10px] opacity-50 mt-2">
+                  <div className="resource-url" title={resource.url}>
+                    {resource.url}
+                  </div>
+                  {resource.pageUrl && resource.pageUrl !== resource.url && (
+                    <div className="metadata-row" title={resource.pageUrl}>
+                      <span className="metadata-label">pageUrl:</span> {resource.pageUrl}
+                    </div>
+                  )}
+                  {resource.pageTitle && resource.pageTitle !== resource.title && (
+                    <div className="metadata-row" title={resource.pageTitle}>
+                      <span className="metadata-label">pageTitle:</span> {resource.pageTitle}
+                    </div>
+                  )}
+                  {resource.linkContext && (
+                    <div className="metadata-row" title={resource.linkContext}>
+                      <span className="metadata-label">context:</span> "{resource.linkContext}"
+                    </div>
+                  )}
+                  {resource.tags.length > 0 && (
+                    <div className="tags-container">
+                      {resource.tags.map((tag, i) => (
+                        <span key={i} className="tag">
+                          #{tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {resource.notes && (
+                    <div className="resource-notes" title={resource.notes}>
+                      {getResourcePreviewText(resource)}
+                    </div>
+                  )}
+                  <div className="actions-container">
+                    <button
+                      onClick={() => openEditModal(resource)}
+                      className="btn-action"
+                    >
+                      EDIT
+                    </button>
+                    <button
+                      onClick={() => handleDelete(resource.id)}
+                      className="btn-action btn-action-delete"
+                    >
+                      DELETE
+                    </button>
+                  </div>
+                  <div className="timestamp">
                     {formatResourceDate(resource.createdAt)}
                   </div>
                 </div>
@@ -191,58 +272,45 @@ export default function App() {
         )}
       </div>
 
-      <dialog className={`modal ${editModal.show ? 'modal-open' : ''}`}>
-        <div className="modal-box">
-          <h3 className="font-bold text-lg">Edit Resource</h3>
-          <div className="py-4 space-y-4">
-            <div>
-              <label className="label">
-                <span className="label-text">Title</span>
-              </label>
-              <div className="text-sm opacity-70">{editModal.resource?.title}</div>
+      {editModal.show && (
+        <div className="modal-overlay">
+          <div className="modal-box">
+            <div className="modal-title">Edit Resource</div>
+            <div className="modal-field">
+              <label className="modal-label">title</label>
+              <div className="modal-value">{editModal.resource?.title}</div>
             </div>
-            <div>
-              <label className="label">
-                <span className="label-text">URL</span>
-              </label>
-              <div className="text-sm opacity-70 truncate">{editModal.resource?.url}</div>
+            <div className="modal-field">
+              <label className="modal-label">url</label>
+              <div className="modal-value modal-value-truncate" title={editModal.resource?.url}>
+                {editModal.resource?.url}
+              </div>
             </div>
-            <div>
-              <label className="label">
-                <span className="label-text">Tags (comma-separated)</span>
-              </label>
+            <div className="modal-field">
+              <label className="modal-label">tags</label>
               <input
                 type="text"
                 value={editTags}
                 onChange={(e) => setEditTags(e.target.value)}
-                className="input input-bordered w-full"
+                placeholder="tag1, tag2, tag3"
+                className="modal-input"
               />
             </div>
-            <div>
-              <label className="label">
-                <span className="label-text">Notes</span>
-              </label>
+            <div className="modal-field">
+              <label className="modal-label">notes</label>
               <textarea
                 value={editNotes}
                 onChange={(e) => setEditNotes(e.target.value)}
-                className="textarea textarea-bordered w-full"
-                rows={4}
+                className="modal-textarea"
               />
             </div>
-          </div>
-          <div className="modal-action">
-            <button onClick={closeEditModal} className="btn">
-              Cancel
-            </button>
-            <button onClick={saveEdit} className="btn btn-primary">
-              Save
-            </button>
+            <div className="modal-actions">
+              <button onClick={closeEditModal} className="btn-cancel">Cancel</button>
+              <button onClick={saveEdit} className="btn-save">Save</button>
+            </div>
           </div>
         </div>
-        <form method="dialog" className="modal-backdrop">
-          <button onClick={closeEditModal}>close</button>
-        </form>
-      </dialog>
+      )}
     </div>
   )
 }

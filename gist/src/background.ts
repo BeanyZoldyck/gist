@@ -7,13 +7,83 @@ export interface Resource {
   tags: string[]
   createdAt: number
   updatedAt?: number
+  pageUrl: string
+  pageTitle: string
+  pageDescription?: string
+  linkContext?: string
 }
 
 const DB_NAME = 'gist-resources'
-const DB_VERSION = 1
+const DB_VERSION = 2
 const STORE_NAME = 'resources'
+
+console.log('[Background] Service worker starting up...')
+console.log('[Background] Chrome API available:', typeof chrome !== 'undefined')
+
+chrome.commands.getAll((commands) => {
+  console.log('[Background] Registered commands:', commands)
+  console.log('[Background] Number of commands:', commands?.length)
+  if (commands && commands.length > 0) {
+    commands.forEach((cmd) => {
+      console.log('[Background] Command:', cmd.name, 'Shortcut:', cmd.shortcut)
+    })
+  }
+})
+
 let db: IDBDatabase | null = null
 let dbPromise: Promise<IDBDatabase> | null = null
+
+chrome.commands.onCommand.addListener((command) => {
+  console.log('[Background] Command received:', command)
+  if (command === 'toggle_side_panel') {
+    console.log('[Background] Toggle side panel command triggered')
+    
+    chrome.sidePanel.setOptions({ enabled: true }, () => {
+      console.log('[Background] Side panel enabled, error:', chrome.runtime.lastError)
+      chrome.sidePanel.open({ windowId: chrome.windows.WINDOW_ID_CURRENT }, () => {
+        console.log('[Background] Side panel opened, error:', chrome.runtime.lastError)
+      })
+    })
+  }
+})
+
+chrome.runtime.onConnect.addListener((port) => {
+  console.log('[Background] New connection:', port.name)
+  if (port.name === 'sidePanel') {
+    console.log('[Background] Side panel connected')
+    port.onMessage.addListener((message) => {
+      console.log('[Background] Message from side panel:', message)
+    })
+    port.onDisconnect.addListener(() => {
+      console.log('[Background] Side panel disconnected')
+    })
+  }
+})
+
+chrome.runtime.onInstalled.addListener(() => {
+  console.log('[Background] Extension installed/updated')
+  chrome.commands.getAll((commands) => {
+    console.log('[Background] Commands after install:', commands)
+  })
+})
+
+chrome.runtime.onStartup.addListener(() => {
+  console.log('[Background] Extension started up')
+})
+
+console.log('[Background] Service worker starting up...')
+console.log('[Background] Chrome API available:', typeof chrome !== 'undefined')
+
+chrome.commands.getAll((commands) => {
+  console.log('[Background] Registered commands:', commands)
+  console.log('[Background] Number of commands:', commands?.length)
+  if (commands && commands.length > 0) {
+    commands.forEach((cmd) => {
+      console.log('[Background] Command:', cmd.name, 'Shortcut:', cmd.shortcut)
+    })
+  }
+})
+
 
 function getDB(): Promise<IDBDatabase> {
   if (dbPromise) {
@@ -47,12 +117,31 @@ function getDB(): Promise<IDBDatabase> {
 
     request.onupgradeneeded = (event) => {
       const database = (event.target as IDBOpenDBRequest).result
+      const oldVersion = event.oldVersion
+
       if (!database.objectStoreNames.contains(STORE_NAME)) {
         const store = database.createObjectStore(STORE_NAME, { keyPath: 'id' })
         store.createIndex('url', 'url', { unique: false })
         store.createIndex('title', 'title', { unique: false })
         store.createIndex('createdAt', 'createdAt', { unique: false })
+        store.createIndex('pageUrl', 'pageUrl', { unique: false })
+        store.createIndex('pageTitle', 'pageTitle', { unique: false })
+        store.createIndex('pageDescription', 'pageDescription', { unique: false })
+        store.createIndex('linkContext', 'linkContext', { unique: false })
         console.log('[Background] Created IndexedDB object store:', STORE_NAME)
+      } else {
+        const transaction = request.transaction
+        const store = transaction?.objectStore(STORE_NAME)
+
+        if (store) {
+          if (oldVersion < 2) {
+            store.createIndex('pageUrl', 'pageUrl', { unique: false })
+            store.createIndex('pageTitle', 'pageTitle', { unique: false })
+            store.createIndex('pageDescription', 'pageDescription', { unique: false })
+            store.createIndex('linkContext', 'linkContext', { unique: false })
+            console.log('[Background] Added new indexes to existing store:', STORE_NAME)
+          }
+        }
       }
     }
 
@@ -158,6 +247,30 @@ async function deleteResourceFromDB(id: string): Promise<void> {
   }
 }
 
+async function deleteAllResourcesFromDB(): Promise<void> {
+  try {
+    const database = await getDB()
+    return new Promise((resolve, reject) => {
+      const transaction = database.transaction([STORE_NAME], 'readwrite')
+      const store = transaction.objectStore(STORE_NAME)
+      const request = store.clear()
+
+      request.onsuccess = () => {
+        console.log('[Background] Deleted all resources')
+        resolve()
+      }
+
+      request.onerror = () => {
+        console.error('[Background] Failed to delete all resources:', request.error)
+        reject(request.error)
+      }
+    })
+  } catch (error) {
+    console.error('[Background] deleteAllResourcesFromDB failed:', error)
+    throw error
+  }
+}
+
 function broadcastUpdate() {
   chrome.runtime.sendMessage({ type: 'RESOURCES_UPDATED' }).catch(() => {
   })
@@ -200,6 +313,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           sendResponse({ success: true })
           break
         }
+        case 'DELETE_ALL_RESOURCES': {
+          await deleteAllResourcesFromDB()
+          broadcastUpdate()
+          sendResponse({ success: true })
+          break
+        }
+
         case 'UPDATE_TAGS': {
           const resource = await getResourceFromDB(message.id)
           if (!resource) {
@@ -243,8 +363,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
             const notesMatch = resource.notes.toLowerCase().includes(lowerQuery)
             const textMatch = resource.text?.toLowerCase().includes(lowerQuery)
             const tagsMatch = resource.tags.some(tag => tag.toLowerCase().includes(lowerQuery))
+            const pageUrlMatch = resource.pageUrl?.toLowerCase().includes(lowerQuery)
+            const pageTitleMatch = resource.pageTitle?.toLowerCase().includes(lowerQuery)
+            const pageDescMatch = resource.pageDescription?.toLowerCase().includes(lowerQuery)
+            const linkContextMatch = resource.linkContext?.toLowerCase().includes(lowerQuery)
             
-            return titleMatch || urlMatch || notesMatch || textMatch || tagsMatch
+            return titleMatch || urlMatch || notesMatch || textMatch || tagsMatch || 
+                   pageUrlMatch || pageTitleMatch || pageDescMatch || linkContextMatch
           })
           
           sendResponse({ success: true, data: results })
@@ -261,14 +386,4 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   handleMessage()
   return true
-})
-
-chrome.commands.onCommand.addListener((command) => {
-  if (command === 'toggle_side_panel') {
-    chrome.windows.getCurrent((window) => {
-      if (window.id) {
-        chrome.sidePanel.open({ windowId: window.id })
-      }
-    })
-  }
 })
