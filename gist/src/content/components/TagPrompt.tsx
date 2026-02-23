@@ -10,7 +10,7 @@ export interface TagPromptProps {
   existingTags: string[]
 }
 
-export default function TagPrompt({ visible, position, url, title, onSave, onSkip, existingTags }: TagPromptProps) {
+export default function TagPrompt({ visible, position, url, title: _title, onSave, onSkip, existingTags }: TagPromptProps) {
   const [tags, setTags] = useState('')
   const [notes, setNotes] = useState('')
   const [suggestions, setSuggestions] = useState<string[]>([])
