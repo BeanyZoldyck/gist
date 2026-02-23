@@ -15,12 +15,14 @@ export default function App() {
   const [editNotes, setEditNotes] = useState('')
   const [hoveredCard, setHoveredCard] = useState<string | null>(null)
   const [hoveredTitle, setHoveredTitle] = useState<string | null>(null)
+  const [mcpConnected, setMcpConnected] = useState(false)
+  const [mcpConnecting, setMcpConnecting] = useState(false)
 
   useEffect(() => {
     console.log('[SidePanel] App mounted')
     const newPort = chrome.runtime.connect({ name: 'sidePanel' })
     console.log('[SidePanel] Connected to background script')
-    
+
     newPort.onMessage.addListener(() => {
       console.log('[SidePanel] Received message from background')
       newPort.postMessage({ type: 'sidePanelActive' })
@@ -31,6 +33,7 @@ export default function App() {
     })
 
     loadResources()
+    checkMcpStatus()
     
     return () => {
       console.log('[SidePanel] App unmounting')
@@ -42,12 +45,34 @@ export default function App() {
     const handleMessage = (message: any) => {
       if (message.type === 'RESOURCES_UPDATED') {
         loadResources()
+      } else if (message.type === 'MCP_STATUS_CHANGED') {
+        setMcpConnected(message.status === 'connected')
+        setMcpConnecting(false)
       }
     }
 
     chrome.runtime.onMessage.addListener(handleMessage)
     return () => chrome.runtime.onMessage.removeListener(handleMessage)
   }, [])
+
+  const checkMcpStatus = async () => {
+    const response = await chrome.runtime.sendMessage({ type: 'GET_MCP_STATUS' })
+    if (response.success) {
+      setMcpConnected(response.connected)
+    }
+  }
+
+  const toggleMcpConnection = async () => {
+    if (mcpConnected) {
+      setMcpConnecting(true)
+      await chrome.runtime.sendMessage({ type: 'MCP_DISCONNECT' })
+      setMcpConnected(false)
+      setMcpConnecting(false)
+    } else {
+      setMcpConnecting(true)
+      await chrome.runtime.sendMessage({ type: 'MCP_CONNECT' })
+    }
+  }
 
   const loadResources = async () => {
     setLoading(true)
@@ -168,14 +193,27 @@ export default function App() {
       <div className="app-header">
         <div className="header-top">
           <h2 className="header-title">RESOURCES</h2>
-          {resources.length > 0 && (
+          <div className="header-actions">
             <button
-              onClick={handleDeleteAll}
-              className="btn-delete-all"
+              onClick={toggleMcpConnection}
+              disabled={mcpConnecting}
+              className={`btn-mcp ${mcpConnected ? 'btn-mcp-connected' : 'btn-mcp-disconnected'}`}
+              title={mcpConnected ? 'Disconnect from MCP server' : 'Connect to MCP server'}
             >
-              DELETE ALL
+              {mcpConnecting ? '⟳' : mcpConnected ? '●' : '○'}
+              <span className="btn-mcp-text">
+                {mcpConnecting ? 'Connecting...' : mcpConnected ? 'MCP Connected' : 'Connect MCP'}
+              </span>
             </button>
-          )}
+            {resources.length > 0 && (
+              <button
+                onClick={handleDeleteAll}
+                className="btn-delete-all"
+              >
+                DELETE ALL
+              </button>
+            )}
+          </div>
         </div>
         <input
           type="text"

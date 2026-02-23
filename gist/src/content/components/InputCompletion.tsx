@@ -77,93 +77,259 @@ export default function InputCompletion({
   if (!visible || !position) return null
 
   return createPortal(
-    <div
-      ref={menuRef}
-      className="gist-completion-menu dropdown dropdown-end dropdown-content z-[2147483648] bg-base-300 rounded-box shadow-xl max-h-[400px] overflow-y-auto w-[350px]"
-      style={{
-        position: 'fixed',
-        top: `${position.top}px`,
-        left: `${position.left}px`,
-        backgroundColor: 'var(--fallback-b1, oklch(0.28 0.046 264.705)',
-        opacity: 1
-      }}
-    >
-      <div className="bg-base-300 rounded-box" style={{ opacity: 1 }}>
+    <>
+      <style>{`
+        .completion-menu {
+          font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+          background-color: #252526;
+          border: 1px solid #3c3c3c;
+          border-radius: 3px;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+          max-height: 400px;
+          overflow-y: auto;
+          min-width: 350px;
+        }
+
+        .completion-menu-header {
+          padding: 8px 12px;
+          border-bottom: 1px solid #333;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-size: 11px;
+          font-weight: 600;
+          color: #6a9955;
+          letter-spacing: 0.5px;
+          text-transform: uppercase;
+        }
+
+        .completion-menu-empty {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 40px 20px;
+          color: #6a9955;
+        }
+
+        .completion-menu-empty-icon {
+          font-size: 32px;
+          margin-bottom: 8px;
+        }
+
+        .completion-menu-empty-text {
+          font-size: 12px;
+          color: #9a9a9a;
+        }
+
+        .completion-menu-item {
+          background-color: #252526;
+          border: 1px solid transparent;
+          border-bottom: 1px solid #333;
+          padding: 10px 12px;
+          cursor: pointer;
+          transition: background-color 0.15s, border-color 0.15s;
+        }
+
+        .completion-menu-item:hover {
+          background-color: #2d2d30;
+          border-color: #3c3c3c;
+        }
+
+        .completion-menu-item.active {
+          background-color: #2d2d30;
+          border-left: 2px solid #0e639c;
+          padding-left: 10px;
+        }
+
+        .completion-item-title {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-size: 13px;
+          font-weight: 500;
+          color: #9cdcfe;
+          margin-bottom: 4px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .completion-item-url {
+          font-size: 11px;
+          color: #9a9a9a;
+          margin-bottom: 4px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .completion-item-notes {
+          font-size: 11px;
+          color: #ce9178;
+          margin-bottom: 4px;
+          overflow: hidden;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+        }
+
+        .completion-item-footer {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          margin-top: 6px;
+        }
+
+        .completion-tag {
+          font-size: 10px;
+          padding: 2px 6px;
+          background-color: #0e639c;
+          color: #e8e8e8;
+          border-radius: 2px;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        .completion-tag-more {
+          font-size: 10px;
+          padding: 2px 6px;
+          background-color: #3c3c3c;
+          color: #e8e8e8;
+          border-radius: 2px;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        .completion-timestamp {
+          font-size: 9px;
+          color: #585858;
+          margin-left: auto;
+        }
+
+        .completion-menu-footer {
+          padding: 6px 12px;
+          border-top: 1px solid #333;
+          background-color: #1e1e1e;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          font-size: 10px;
+          color: #6a9955;
+        }
+
+        .completion-keybinding {
+          display: flex;
+          gap: 4px;
+          align-items: center;
+        }
+
+        .completion-keybinding-kbd {
+          padding: 2px 5px;
+          background-color: #3c3c3c;
+          border: 1px solid #4f4f4f;
+          border-radius: 2px;
+          font-size: 9px;
+          color: #e8e8e8;
+        }
+
+        ::-webkit-scrollbar {
+          width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+          background: #252526;
+        }
+
+        ::-webkit-scrollbar-thumb {
+          background: #424242;
+          border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+          background: #4f4f4f;
+        }
+      `}</style>
+      <div
+        ref={menuRef}
+        className="completion-menu"
+        style={{
+          position: 'fixed',
+          top: `${position.top}px`,
+          left: `${position.left}px`,
+          zIndex: 2147483648
+        }}
+      >
         {results.length > 0 && (
-          <div className="p-2 border-b border-base-200">
-            <div className="text-xs font-semibold opacity-50 uppercase">Insert Saved Resource</div>
+          <div className="completion-menu-header">
+            Insert Saved Resource
           </div>
         )}
 
         {results.length === 0 && !isSearching && (
-          <div className="p-5 text-center opacity-50 text-xs">
-            <div className="text-2xl mb-2">🔍</div>
-            <div>Type to search saved resources...</div>
+          <div className="completion-menu-empty">
+            <span className="completion-menu-empty-icon">🔍</span>
+            <div className="completion-menu-empty-text">Type to search saved resources...</div>
           </div>
         )}
 
         {isSearching && results.length === 0 && (
-          <div className="p-5 text-center opacity-50 text-xs">
-            <div className="text-2xl mb-2">⏳</div>
-            <div>Searching...</div>
+          <div className="completion-menu-empty">
+            <span className="completion-menu-empty-icon">⏳</span>
+            <div className="completion-menu-empty-text">Searching...</div>
           </div>
         )}
 
         {results.length > 0 && (
-          <ul className="menu menu-compact bg-base-100 w-full p-0">
+          <div>
             {results.slice(0, 3).map((result, index) => (
-              <li key={result.id}>
-                <div
-                  data-index={index}
-                  className={`cursor-pointer ${index === activeIndex ? 'active' : ''}`}
-                  onClick={() => handleItemClick(result)}
-                >
-                  <div className="flex flex-col gap-1 p-2">
-                    <div className="font-medium truncate">{result.title}</div>
-                    <div className="text-xs opacity-70 truncate">{result.url}</div>
-                    {result.notes && (
-                      <div className="text-xs opacity-60 line-clamp-2">{result.notes}</div>
-                    )}
-                    <div className="flex items-center gap-2 mt-1">
-                      {result.tags && result.tags.length > 0 && (
-                        <div className="flex gap-1 flex-wrap">
-                          {result.tags.slice(0, 3).map(tag => (
-                            <span key={tag} className="badge badge-xs badge-ghost">
-                              {tag}
-                            </span>
-                          ))}
-                          {result.tags.length > 3 && (
-                            <span className="badge badge-xs badge-ghost">
-                              +{result.tags.length - 3}
-                            </span>
-                          )}
-                        </div>
-                      )}
-                      {result.createdAt && (
-                        <span className="text-[10px] opacity-50 ml-auto">
-                          {formatResourceDate(result.createdAt)}
+              <div
+                key={result.id}
+                data-index={index}
+                className={`completion-menu-item ${index === activeIndex ? 'active' : ''}`}
+                onClick={() => handleItemClick(result)}
+              >
+                <div className="completion-item-title">{result.title}</div>
+                <div className="completion-item-url" title={result.url}>{result.url}</div>
+                {result.notes && (
+                  <div className="completion-item-notes" title={result.notes}>{result.notes}</div>
+                )}
+                <div className="completion-item-footer">
+                  {result.tags && result.tags.length > 0 && (
+                    <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                      {result.tags.slice(0, 3).map(tag => (
+                        <span key={tag} className="completion-tag">
+                          #{tag}
+                        </span>
+                      ))}
+                      {result.tags.length > 3 && (
+                        <span className="completion-tag-more">
+                          +{result.tags.length - 3}
                         </span>
                       )}
                     </div>
-                  </div>
+                  )}
+                  {result.createdAt && (
+                    <span className="completion-timestamp">
+                      {formatResourceDate(result.createdAt)}
+                    </span>
+                  )}
                 </div>
-              </li>
+              </div>
             ))}
-          </ul>
+          </div>
         )}
 
         {results.length > 0 && (
-          <div className="p-2 border-t border-base-200 bg-base-200 opacity-50 text-[11px] flex justify-between items-center">
-            <div className="flex gap-3">
-              <span className="flex gap-0.5"><kbd className="kbd kbd-xs">↑</kbd><kbd className="kbd kbd-xs">↓</kbd> Navigate</span>
-              <span><kbd className="kbd kbd-xs">Enter</kbd> Insert</span>
-              <span><kbd className="kbd kbd-xs">Esc</kbd> Close</span>
+          <div className="completion-menu-footer">
+            <div className="completion-keybinding">
+              <span className="completion-keybinding-kbd">↑</span>
+              <span className="completion-keybinding-kbd">↓</span>
+              <span>Navigate</span>
+              <span style={{ marginLeft: '8px' }} className="completion-keybinding-kbd">Enter</span>
+              <span>Insert</span>
+              <span style={{ marginLeft: '8px' }} className="completion-keybinding-kbd">Esc</span>
+              <span>Close</span>
             </div>
             <div>{results.length} result{results.length !== 1 ? 's' : ''}</div>
           </div>
         )}
       </div>
-    </div>,
+    </>,
     portalRoot
   )
 }

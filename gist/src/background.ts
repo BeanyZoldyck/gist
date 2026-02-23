@@ -17,6 +17,180 @@ const DB_NAME = 'gist-resources'
 const DB_VERSION = 2
 const STORE_NAME = 'resources'
 
+const MCP_WS_URL = 'ws://localhost:9001'
+let mcpWs: WebSocket | null = null
+let mcpReconnectTimer: number | null = null
+
+type McpMessage = {
+  id?: string
+  type?: string
+  action?: string
+  payload?: any
+}
+
+function initMcpConnection() {
+  console.log('[Background MCP] Initializing connection to MCP server at', MCP_WS_URL)
+
+  try {
+    mcpWs = new WebSocket(MCP_WS_URL)
+
+    mcpWs.onopen = () => {
+      console.log('[Background MCP] Connected to MCP server')
+      notifyMcpStatus('connected')
+    }
+
+    mcpWs.onclose = () => {
+      console.log('[Background MCP] Disconnected from MCP server')
+      mcpWs = null
+      notifyMcpStatus('disconnected')
+      scheduleMcpReconnect()
+    }
+
+    mcpWs.onerror = (error) => {
+      console.error('[Background MCP] WebSocket error:', error)
+    }
+
+    mcpWs.onmessage = async (event) => {
+      try {
+        const message: McpMessage = JSON.parse(event.data)
+        console.log('[Background MCP] Received message:', message)
+
+        await handleMcpMessage(message)
+      } catch (error) {
+        console.error('[Background MCP] Error processing message:', error)
+      }
+    }
+  } catch (error) {
+    console.error('[Background MCP] Failed to create WebSocket:', error)
+    scheduleMcpReconnect()
+  }
+}
+
+function scheduleMcpReconnect() {
+  if (mcpReconnectTimer) return
+
+  mcpReconnectTimer = setTimeout(() => {
+    console.log('[Background MCP] Attempting to reconnect...')
+    mcpReconnectTimer = null
+    initMcpConnection()
+  }, 3000)
+}
+
+function closeMcpConnection() {
+  if (mcpReconnectTimer) {
+    clearTimeout(mcpReconnectTimer)
+    mcpReconnectTimer = null
+  }
+
+  if (mcpWs) {
+    mcpWs.close()
+    mcpWs = null
+  }
+}
+
+async function handleMcpMessage(message: McpMessage) {
+  if (!message.id) return
+
+  try {
+    let result: any = null
+    let error: string | null = null
+
+    if (message.action === 'browser_navigate') {
+      result = await handleBrowserNavigate(message.payload)
+    } else if (message.action === 'browser_go_back') {
+      result = await handleBrowserGoBack()
+    } else if (message.action === 'browser_go_forward') {
+      result = await handleBrowserGoForward()
+    } else if (message.action) {
+      result = await handleContentScriptAction(message.action, message.payload)
+    } else {
+      throw new Error('No action specified in MCP message')
+    }
+
+    const response = {
+      id: message.id,
+      type: 'response',
+      result,
+      error
+    }
+
+    mcpWs?.send(JSON.stringify(response))
+  } catch (error) {
+    const response = {
+      id: message.id,
+      type: 'response',
+      result: null,
+      error: error instanceof Error ? error.message : String(error)
+    }
+
+    mcpWs?.send(JSON.stringify(response))
+  }
+}
+
+async function handleContentScriptAction(action: string, payload: any): Promise<any> {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+
+  if (!tab?.id) {
+    throw new Error('No active tab found')
+  }
+
+  const response = await chrome.tabs.sendMessage(tab.id, {
+    type: 'MCP_ACTION',
+    action,
+    payload
+  })
+
+  if (!response.success) {
+    throw new Error(response.error || 'Action failed')
+  }
+
+  return response.data
+}
+
+async function handleBrowserNavigate(payload: { url: string }): Promise<string> {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+
+  if (!tab?.id) {
+    throw new Error('No active tab found')
+  }
+
+  await chrome.tabs.update(tab.id, { url: payload.url })
+
+  await new Promise(resolve => setTimeout(resolve, 2000))
+
+  return `Navigated to ${payload.url}`
+}
+
+async function handleBrowserGoBack(): Promise<string> {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+
+  if (!tab?.id) {
+    throw new Error('No active tab found')
+  }
+
+  await chrome.tabs.goBack(tab.id)
+  await new Promise(resolve => setTimeout(resolve, 1000))
+
+  return 'Navigated back'
+}
+
+async function handleBrowserGoForward(): Promise<string> {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+
+  if (!tab?.id) {
+    throw new Error('No active tab found')
+  }
+
+  await chrome.tabs.goForward(tab.id)
+  await new Promise(resolve => setTimeout(resolve, 1000))
+
+  return 'Navigated forward'
+}
+
+function notifyMcpStatus(status: 'connected' | 'disconnected') {
+  chrome.runtime.sendMessage({ type: 'MCP_STATUS_CHANGED', status }).catch(() => {})
+}
+
 console.log('[Background] Service worker starting up...')
 console.log('[Background] Chrome API available:', typeof chrome !== 'undefined')
 
@@ -44,6 +218,9 @@ chrome.commands.onCommand.addListener((command) => {
         console.log('[Background] Side panel opened, error:', chrome.runtime.lastError)
       })
     })
+  } else if (command === 'save_current_url') {
+    console.log('[Background] Save current URL command triggered')
+    saveCurrentTabUrl()
   }
 })
 
@@ -69,21 +246,8 @@ chrome.runtime.onInstalled.addListener(() => {
 
 chrome.runtime.onStartup.addListener(() => {
   console.log('[Background] Extension started up')
+  initMcpConnection()
 })
-
-console.log('[Background] Service worker starting up...')
-console.log('[Background] Chrome API available:', typeof chrome !== 'undefined')
-
-chrome.commands.getAll((commands) => {
-  console.log('[Background] Registered commands:', commands)
-  console.log('[Background] Number of commands:', commands?.length)
-  if (commands && commands.length > 0) {
-    commands.forEach((cmd) => {
-      console.log('[Background] Command:', cmd.name, 'Shortcut:', cmd.shortcut)
-    })
-  }
-})
-
 
 function getDB(): Promise<IDBDatabase> {
   if (dbPromise) {
@@ -276,10 +440,60 @@ function broadcastUpdate() {
   })
 }
 
+async function saveCurrentTabUrl() {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+    if (!tab?.url) {
+      console.warn('[Background] No active tab found or tab has no URL')
+      return
+    }
+
+    const url = tab.url
+    const title = tab.title || new URL(url).hostname
+    const now = Date.now()
+
+    const resource: Resource = {
+      id: `res_${now}_${Math.random().toString(36).substr(2, 9)}`,
+      url,
+      title,
+      text: '',
+      notes: '',
+      tags: [],
+      createdAt: now,
+      pageUrl: url,
+      pageTitle: title,
+      pageDescription: '',
+      linkContext: ''
+    }
+
+    await saveResourceToDB(resource)
+    broadcastUpdate()
+    console.log('[Background] Saved current URL:', url)
+  } catch (error) {
+    console.error('[Background] Failed to save current URL:', error)
+  }
+}
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   const handleMessage = async () => {
     try {
       switch (message.type) {
+        case 'MCP_CONNECT': {
+          closeMcpConnection()
+          initMcpConnection()
+          sendResponse({ success: true })
+          break
+        }
+        case 'MCP_DISCONNECT': {
+          closeMcpConnection()
+          sendResponse({ success: true })
+          break
+        }
+        case 'GET_MCP_STATUS': {
+          const isConnected = mcpWs !== null && mcpWs.readyState === WebSocket.OPEN
+          sendResponse({ success: true, connected: isConnected })
+          break
+        }
         case 'GET_ALL_RESOURCES': {
           const resources = await getAllFromDB()
           sendResponse({ success: true, data: resources })
@@ -294,14 +508,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           const now = Date.now()
           const existingResources = await getAllFromDB()
           const existingResource = message.resource.id ? existingResources.find((r: Resource) => r.id === message.resource.id) : null
-          
+
           const newResource: Resource = {
             ...message.resource,
             id: message.resource.id || `res_${now}_${Math.random().toString(36).substr(2, 9)}`,
             createdAt: existingResource?.createdAt || now,
             updatedAt: now
           }
-          
+
           await saveResourceToDB(newResource)
           broadcastUpdate()
           sendResponse({ success: true, data: newResource })
@@ -319,7 +533,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           sendResponse({ success: true })
           break
         }
-
         case 'UPDATE_TAGS': {
           const resource = await getResourceFromDB(message.id)
           if (!resource) {
@@ -353,10 +566,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
             sendResponse({ success: true, data: resources })
             return
           }
-          
+
           const allResources = await getAllFromDB()
           const lowerQuery = query.toLowerCase()
-          
+
           const results = allResources.filter((resource: Resource) => {
             const titleMatch = resource.title.toLowerCase().includes(lowerQuery)
             const urlMatch = resource.url.toLowerCase().includes(lowerQuery)
@@ -367,11 +580,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
             const pageTitleMatch = resource.pageTitle?.toLowerCase().includes(lowerQuery)
             const pageDescMatch = resource.pageDescription?.toLowerCase().includes(lowerQuery)
             const linkContextMatch = resource.linkContext?.toLowerCase().includes(lowerQuery)
-            
-            return titleMatch || urlMatch || notesMatch || textMatch || tagsMatch || 
+
+            return titleMatch || urlMatch || notesMatch || textMatch || tagsMatch ||
                    pageUrlMatch || pageTitleMatch || pageDescMatch || linkContextMatch
           })
-          
+
           sendResponse({ success: true, data: results })
           break
         }

@@ -5,6 +5,14 @@ import { isTextInput, getInputInfo, getElementPosition, InputFieldInfo } from '.
 
 console.log('[CRXJS] Input field detector loaded!')
 
+window.addEventListener('error', (event) => {
+  if (event.message?.includes('Extension context invalidated') || event.message?.includes('The message port closed')) {
+    event.preventDefault()
+    event.stopPropagation()
+    console.warn('[CRXJS] Extension context invalidated. Reload the page to restore full functionality.')
+  }
+})
+
 let overlayRoot: any = null
 
 function InputDetectorApp() {

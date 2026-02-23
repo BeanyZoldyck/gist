@@ -17,10 +17,13 @@ export default defineManifest({
   permissions: [
     'sidePanel',
     'storage',
+    'tabs',
+    'activeTab',
   ],
   host_permissions: [
     'http://localhost:5173/*',
     'ws://localhost:5173/*',
+    '<all_urls>',
   ],
   commands: {
     toggle_side_panel: {
@@ -28,6 +31,12 @@ export default defineManifest({
         default: 'Ctrl+K',
       },
       description: 'Toggle Side Panel',
+    },
+    save_current_url: {
+      suggested_key: {
+        default: 'Ctrl+Shift+S',
+      },
+      description: 'Save current URL to search',
     },
   },
   options_ui: {
@@ -37,15 +46,19 @@ export default defineManifest({
   content_scripts: [
     {
       js: ['src/content/main.tsx'],
-      matches: ['https://*/*'],
+      matches: ['<all_urls>'],
     },
     {
       js: ['src/content/link-hints.tsx'],
-      matches: ['https://*/*'],
+      matches: ['<all_urls>'],
     },
     {
       js: ['src/content/input-completion.tsx'],
-      matches: ['https://*/*'],
+      matches: ['<all_urls>'],
+    },
+    {
+      js: ['src/content/automation.ts'],
+      matches: ['<all_urls>'],
     },
   ],
   side_panel: {

@@ -6,6 +6,14 @@ import { getAllResources } from './utils/resource-storage'
 
 console.log('[InputCompletionApp] ========== CONTENT SCRIPT LOADED ==========')
 
+window.addEventListener('error', (event) => {
+  if (event.message?.includes('Extension context invalidated') || event.message?.includes('The message port closed')) {
+    event.preventDefault()
+    event.stopPropagation()
+    console.warn('[InputCompletionApp] Extension context invalidated. Reload the page to restore full functionality.')
+  }
+})
+
 getAllResources().then(resources => {
   console.log('[InputCompletionApp] All saved resources:', resources)
 }).catch(error => {
