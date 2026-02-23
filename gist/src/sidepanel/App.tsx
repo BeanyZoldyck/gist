@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Resource, getAllResources, deleteResource, deleteAllResources, updateResourceTags, updateResourceNotes, searchResources, formatResourceDate, getResourcePreviewText } from '../content/utils/resource-storage'
+import AIChat from './AIChat'
+import './AIChat.css'
 
 interface EditModal {
   resource: Resource | null
@@ -7,6 +9,7 @@ interface EditModal {
 }
 
 export default function App() {
+  const [activeTab, setActiveTab] = useState<'resources' | 'automation' | 'ai'>('resources')
   const [resources, setResources] = useState<Resource[]>([])
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(true)
@@ -15,8 +18,10 @@ export default function App() {
   const [editNotes, setEditNotes] = useState('')
   const [hoveredCard, setHoveredCard] = useState<string | null>(null)
   const [hoveredTitle, setHoveredTitle] = useState<string | null>(null)
-  const [mcpConnected, setMcpConnected] = useState(false)
-  const [mcpConnecting, setMcpConnecting] = useState(false)
+  const [showAutomation, setShowAutomation] = useState(false)
+  const [automationLogs, setAutomationLogs] = useState<string[]>([])
+  const [automationCommand, setAutomationCommand] = useState('')
+  const [automationPayload, setAutomationPayload] = useState('')
 
   useEffect(() => {
     console.log('[SidePanel] App mounted')
@@ -33,8 +38,7 @@ export default function App() {
     })
 
     loadResources()
-    checkMcpStatus()
-    
+
     return () => {
       console.log('[SidePanel] App unmounting')
       newPort.disconnect()
@@ -45,9 +49,6 @@ export default function App() {
     const handleMessage = (message: any) => {
       if (message.type === 'RESOURCES_UPDATED') {
         loadResources()
-      } else if (message.type === 'MCP_STATUS_CHANGED') {
-        setMcpConnected(message.status === 'connected')
-        setMcpConnecting(false)
       }
     }
 
@@ -55,22 +56,58 @@ export default function App() {
     return () => chrome.runtime.onMessage.removeListener(handleMessage)
   }, [])
 
-  const checkMcpStatus = async () => {
-    const response = await chrome.runtime.sendMessage({ type: 'GET_MCP_STATUS' })
-    if (response.success) {
-      setMcpConnected(response.connected)
+  const executeAutomation = async () => {
+    try {
+      const payload = automationPayload ? JSON.parse(automationPayload) : undefined
+      const response = await chrome.runtime.sendMessage({
+        type: 'AUTOMATION_ACTION',
+        action: automationCommand,
+        payload
+      })
+
+      if (response.success) {
+        setAutomationLogs(function(prev) {
+          const msg = '[OK] ' + automationCommand + ': ' + String(response.data)
+          return [msg].concat(prev).slice(0, 20)
+        })
+      } else {
+        setAutomationLogs(function(prev) {
+          const msg = '[FAIL] ' + automationCommand + ': ' + String(response.error)
+          return [msg].concat(prev).slice(0, 20)
+        })
+      }
+    } catch (error) {
+      setAutomationLogs(function(prev) {
+        const msg = '[ERROR] ' + automationCommand + ': ' + (error instanceof Error ? error.message : String(error))
+        return [msg].concat(prev).slice(0, 20)
+      })
     }
   }
 
-  const toggleMcpConnection = async () => {
-    if (mcpConnected) {
-      setMcpConnecting(true)
-      await chrome.runtime.sendMessage({ type: 'MCP_DISCONNECT' })
-      setMcpConnected(false)
-      setMcpConnecting(false)
-    } else {
-      setMcpConnecting(true)
-      await chrome.runtime.sendMessage({ type: 'MCP_CONNECT' })
+  const snapshot = async () => {
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: 'AUTOMATION_ACTION',
+        action: 'snapshot'
+      })
+
+      if (response.success) {
+        setAutomationLogs(function(prev) {
+          const msg = '[SNAP] ' + String(response.data.title)
+          return [msg].concat(prev).slice(0, 20)
+        })
+        console.log('[SidePanel] Snapshot:', response.data)
+      } else {
+        setAutomationLogs(function(prev) {
+          const msg = '[FAIL] Snapshot failed: ' + String(response.error)
+          return [msg].concat(prev).slice(0, 20)
+        })
+      }
+    } catch (error) {
+      setAutomationLogs(function(prev) {
+        const msg = '[ERROR] Snapshot failed: ' + (error instanceof Error ? error.message : String(error))
+        return [msg].concat(prev).slice(0, 20)
+      })
     }
   }
 
@@ -191,20 +228,32 @@ export default function App() {
   return (
     <div className="app-container">
       <div className="app-header">
-        <div className="header-top">
-          <h2 className="header-title">RESOURCES</h2>
-          <div className="header-actions">
-            <button
-              onClick={toggleMcpConnection}
-              disabled={mcpConnecting}
-              className={`btn-mcp ${mcpConnected ? 'btn-mcp-connected' : 'btn-mcp-disconnected'}`}
-              title={mcpConnected ? 'Disconnect from MCP server' : 'Connect to MCP server'}
-            >
-              {mcpConnecting ? '⟳' : mcpConnected ? '●' : '○'}
-              <span className="btn-mcp-text">
-                {mcpConnecting ? 'Connecting...' : mcpConnected ? 'MCP Connected' : 'Connect MCP'}
-              </span>
-            </button>
+        <div className="tab-navigation">
+          <button
+            className={`tab-button ${activeTab === 'resources' ? 'active' : ''}`}
+            onClick={() => setActiveTab('resources')}
+          >
+            📚 Resources
+          </button>
+          <button
+            className={`tab-button ${activeTab === 'automation' ? 'active' : ''}`}
+            onClick={() => setActiveTab('automation')}
+          >
+            ⚙️ Automation
+          </button>
+          <button
+            className={`tab-button ${activeTab === 'ai' ? 'active' : ''}`}
+            onClick={() => setActiveTab('ai')}
+          >
+            🤖 AI Assistant
+          </button>
+        </div>
+      </div>
+
+      {activeTab === 'resources' && (
+        <div className="resources-panel">
+          <div className="panel-header">
+            <h2 className="header-title">RESOURCES</h2>
             {resources.length > 0 && (
               <button
                 onClick={handleDeleteAll}
@@ -214,101 +263,152 @@ export default function App() {
               </button>
             )}
           </div>
-        </div>
-        <input
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Filter resources..."
-          className="search-input"
-        />
-      </div>
-
-      <div className="resource-list">
-        {loading ? (
-          <div className="empty-state">
-            <span className="empty-icon">⟳</span>
-            <div className="empty-text">Loading...</div>
-          </div>
-        ) : resources.length === 0 ? (
-          <div className="empty-state">
-            <span className="empty-icon large">∅</span>
-            <div className="empty-text empty-title">No resources found</div>
-            <div className="empty-text empty-subtitle">Use Ctrl+Shift+L to capture links</div>
-          </div>
-        ) : (
-          <div className="resources">
-            {resources.map((resource) => (
-              <div
-                key={resource.id}
-                className={`resource-card ${hoveredCard === resource.id ? 'resource-card-hover' : ''}`}
-                onMouseEnter={() => setHoveredCard(resource.id)}
-                onMouseLeave={() => setHoveredCard(null)}
-              >
-                <div>
-                  <div
-                    className={`resource-title ${hoveredTitle === resource.id ? 'resource-title-hover' : ''}`}
-                    onClick={() => openResource(resource.url)}
-                    onMouseEnter={() => setHoveredTitle(resource.id)}
-                    onMouseLeave={() => setHoveredTitle(null)}
-                  >
-                    {resource.title}
-                  </div>
-                  <div className="resource-url" title={resource.url}>
-                    {resource.url}
-                  </div>
-                  {resource.pageUrl && resource.pageUrl !== resource.url && (
-                    <div className="metadata-row" title={resource.pageUrl}>
-                      <span className="metadata-label">pageUrl:</span> {resource.pageUrl}
-                    </div>
-                  )}
-                  {resource.pageTitle && resource.pageTitle !== resource.title && (
-                    <div className="metadata-row" title={resource.pageTitle}>
-                      <span className="metadata-label">pageTitle:</span> {resource.pageTitle}
-                    </div>
-                  )}
-                  {resource.linkContext && (
-                    <div className="metadata-row" title={resource.linkContext}>
-                      <span className="metadata-label">context:</span> "{resource.linkContext}"
-                    </div>
-                  )}
-                  {resource.tags.length > 0 && (
-                    <div className="tags-container">
-                      {resource.tags.map((tag, i) => (
-                        <span key={i} className="tag">
-                          #{tag}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  {resource.notes && (
-                    <div className="resource-notes" title={resource.notes}>
-                      {getResourcePreviewText(resource)}
-                    </div>
-                  )}
-                  <div className="actions-container">
-                    <button
-                      onClick={() => openEditModal(resource)}
-                      className="btn-action"
-                    >
-                      EDIT
-                    </button>
-                    <button
-                      onClick={() => handleDelete(resource.id)}
-                      className="btn-action btn-action-delete"
-                    >
-                      DELETE
-                    </button>
-                  </div>
-                  <div className="timestamp">
-                    {formatResourceDate(resource.createdAt)}
-                  </div>
-                </div>
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Filter resources..."
+            className="search-input"
+          />
+          <div className="resource-list">
+            {loading ? (
+              <div className="empty-state">
+                <span className="empty-icon">⟳</span>
+                <div className="empty-text">Loading...</div>
               </div>
-            ))}
+            ) : resources.length === 0 ? (
+              <div className="empty-state">
+                <span className="empty-icon large">∅</span>
+                <div className="empty-text empty-title">No resources found</div>
+                <div className="empty-text empty-subtitle">Use Ctrl+Shift+L to capture links</div>
+              </div>
+            ) : (
+              <div className="resources">
+                {resources.map((resource) => (
+                  <div
+                    key={resource.id}
+                    className={`resource-card ${hoveredCard === resource.id ? 'resource-card-hover' : ''}`}
+                    onMouseEnter={() => setHoveredCard(resource.id)}
+                    onMouseLeave={() => setHoveredCard(null)}
+                  >
+                    <div>
+                      <div
+                        className={`resource-title ${hoveredTitle === resource.id ? 'resource-title-hover' : ''}`}
+                        onClick={() => openResource(resource.url)}
+                        onMouseEnter={() => setHoveredTitle(resource.id)}
+                        onMouseLeave={() => setHoveredTitle(null)}
+                      >
+                        {resource.title}
+                      </div>
+                      <div className="resource-url" title={resource.url}>
+                        {resource.url}
+                      </div>
+                      {resource.pageUrl && resource.pageUrl !== resource.url && (
+                        <div className="metadata-row" title={resource.pageUrl}>
+                          <span className="metadata-label">pageUrl:</span> {resource.pageUrl}
+                        </div>
+                      )}
+                      {resource.pageTitle && resource.pageTitle !== resource.title && (
+                        <div className="metadata-row" title={resource.pageTitle}>
+                          <span className="metadata-label">pageTitle:</span> {resource.pageTitle}
+                        </div>
+                      )}
+                      {resource.linkContext && (
+                        <div className="metadata-row" title={resource.linkContext}>
+                          <span className="metadata-label">context:</span> "{resource.linkContext}"
+                        </div>
+                      )}
+                      {resource.tags.length > 0 && (
+                        <div className="tags-container">
+                          {resource.tags.map((tag, i) => (
+                            <span key={i} className="tag">
+                              #{tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {resource.notes && (
+                        <div className="resource-notes" title={resource.notes}>
+                          {getResourcePreviewText(resource)}
+                        </div>
+                      )}
+                      <div className="actions-container">
+                        <button
+                          onClick={() => openEditModal(resource)}
+                          className="btn-action"
+                        >
+                          EDIT
+                        </button>
+                        <button
+                          onClick={() => handleDelete(resource.id)}
+                          className="btn-action btn-action-delete"
+                        >
+                          DELETE
+                        </button>
+                      </div>
+                      <div className="timestamp">
+                        {formatResourceDate(resource.createdAt)}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {activeTab === 'automation' && (
+        <div className="automation-panel">
+          <div className="panel-header">
+            <h2 className="header-title">AUTOMATION</h2>
+          </div>
+          <div className="automation-quick-actions">
+            <button onClick={snapshot} className="btn-automation-action">
+              Snapshot
+            </button>
+            <button onClick={() => { setAutomationCommand('click'); setAutomationPayload(''); }} className="btn-automation-action">
+              Click
+            </button>
+            <button onClick={() => { setAutomationCommand('type'); setAutomationPayload(''); }} className="btn-automation-action">
+              Type
+            </button>
+            <button onClick={() => { setAutomationCommand('wait'); setAutomationPayload(JSON.stringify({ time: 1})); }} className="btn-automation-action">
+              Wait
+            </button>
+          </div>
+          <div className="automation-custom">
+            <input
+              type="text"
+              value={automationCommand}
+              onChange={(e) => setAutomationCommand(e.target.value)}
+              placeholder="Action (e.g., navigate, click, type)"
+              className="automation-command-input"
+            />
+            <input
+              type="text"
+              value={automationPayload}
+              onChange={(e) => setAutomationPayload(e.target.value)}
+              placeholder={'Payload JSON (e.g., {"url": "https://example.com"})'}
+              className="automation-payload-input"
+            />
+            <button onClick={executeAutomation} className="btn-execute">
+              ▶ Execute
+            </button>
+          </div>
+          {automationLogs.length > 0 && (
+            <div className="automation-logs">
+              {automationLogs.map((log, i) => (
+                <div key={i} className="automation-log-entry">{log}</div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'ai' && (
+        <AIChat />
+      )}
 
       {editModal.show && (
         <div className="modal-overlay">
