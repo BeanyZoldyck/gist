@@ -19,14 +19,14 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }) => {
-      if (changes.gist_resources) {
+    const handleMessage = (message: any) => {
+      if (message.type === 'RESOURCES_UPDATED') {
         loadResources()
       }
     }
 
-    chrome.storage.onChanged.addListener(handleStorageChange)
-    return () => chrome.storage.onChanged.removeListener(handleStorageChange)
+    chrome.runtime.onMessage.addListener(handleMessage)
+    return () => chrome.runtime.onMessage.removeListener(handleMessage)
   }, [])
 
   const loadResources = async () => {

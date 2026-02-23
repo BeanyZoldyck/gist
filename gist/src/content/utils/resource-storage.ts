@@ -9,16 +9,23 @@ export interface Resource {
   updatedAt?: number
 }
 
-const STORAGE_KEY = 'gist_resources'
+interface MessageResponse<T = any> {
+  success: boolean
+  data?: T
+  error?: string
+}
 
-async function getAllFromStorage(): Promise<Resource[]> {
+async function sendMessage<T>(message: any): Promise<T> {
   return new Promise((resolve, reject) => {
-    chrome.storage.local.get([STORAGE_KEY], (result: { [key: string]: any }) => {
+    chrome.runtime.sendMessage(message, (response: MessageResponse<T>) => {
       if (chrome.runtime.lastError) {
-        console.error('[Storage] Failed to get resources:', chrome.runtime.lastError)
-        reject(chrome.runtime.lastError)
+        console.error('[Storage] Chrome runtime error:', chrome.runtime.lastError)
+        reject(new Error(chrome.runtime.lastError.message))
+      } else if (!response?.success) {
+        console.error('[Storage] Message failed:', response?.error)
+        reject(new Error(response?.error || 'Unknown error'))
       } else {
-        resolve((result[STORAGE_KEY] as Resource[]) || [])
+        resolve(response.data as T)
       }
     })
   })
@@ -26,7 +33,7 @@ async function getAllFromStorage(): Promise<Resource[]> {
 
 export async function getAllResources(): Promise<Resource[]> {
   try {
-    return await getAllFromStorage()
+    return await sendMessage<Resource[]>({ type: 'GET_ALL_RESOURCES' })
   } catch (error) {
     console.error('[Storage] Failed to get resources:', error)
     return []
@@ -35,8 +42,7 @@ export async function getAllResources(): Promise<Resource[]> {
 
 export async function getResource(id: string): Promise<Resource | null> {
   try {
-    const allResources = await getAllFromStorage()
-    return allResources.find(r => r.id === id) || null
+    return await sendMessage<Resource | null>({ type: 'GET_RESOURCE', id })
   } catch (error) {
     console.error('[Storage] Failed to get resource:', error)
     return null
@@ -44,95 +50,46 @@ export async function getResource(id: string): Promise<Resource | null> {
 }
 
 export async function saveResource(resource: Omit<Resource, 'id' | 'createdAt'> & { id?: string }): Promise<Resource> {
-  const now = Date.now()
-  const existingResources = await getAllFromStorage()
-  
-  const existingResource = resource.id ? existingResources.find(r => r.id === resource.id) : null
-  
-  const newResource: Resource = {
-    ...resource,
-    id: resource.id || `res_${now}_${Math.random().toString(36).substr(2, 9)}`,
-    createdAt: existingResource?.createdAt || now,
-    updatedAt: now
+  try {
+    return await sendMessage<Resource>({ type: 'SAVE_RESOURCE', resource })
+  } catch (error) {
+    console.error('[Storage] Failed to save resource:', error)
+    throw error
   }
-  
-  const existingIndex = existingResources.findIndex(r => r.id === newResource.id)
-  if (existingIndex >= 0) {
-    existingResources[existingIndex] = newResource
-  } else {
-    existingResources.push(newResource)
-  }
-  
-  return new Promise((resolve, reject) => {
-    chrome.storage.local.set({ [STORAGE_KEY]: existingResources }, () => {
-      if (chrome.runtime.lastError) {
-        console.error('[Storage] Failed to save resource:', chrome.runtime.lastError)
-        reject(chrome.runtime.lastError)
-      } else {
-        console.log('[Storage] Saved resource:', newResource.id)
-        resolve(newResource)
-      }
-    })
-  })
 }
 
 export async function deleteResource(id: string): Promise<void> {
-  const existingResources = await getAllFromStorage()
-  const filtered = existingResources.filter(r => r.id !== id)
-  
-  return new Promise((resolve, reject) => {
-    chrome.storage.local.set({ [STORAGE_KEY]: filtered }, () => {
-      if (chrome.runtime.lastError) {
-        console.error('[Storage] Failed to delete resource:', chrome.runtime.lastError)
-        reject(chrome.runtime.lastError)
-      } else {
-        console.log('[Storage] Deleted resource:', id)
-        resolve()
-      }
-    })
-  })
+  try {
+    await sendMessage<void>({ type: 'DELETE_RESOURCE', id })
+  } catch (error) {
+    console.error('[Storage] Failed to delete resource:', error)
+    throw error
+  }
 }
 
 export async function updateResourceTags(id: string, tags: string[]): Promise<Resource | null> {
-  const resource = await getResource(id)
-  if (!resource) return null
-  
-  resource.tags = tags
-  resource.updatedAt = Date.now()
-  await saveResource(resource)
-  return resource
+  try {
+    return await sendMessage<Resource | null>({ type: 'UPDATE_TAGS', id, tags })
+  } catch (error) {
+    console.error('[Storage] Failed to update tags:', error)
+    return null
+  }
 }
 
 export async function updateResourceNotes(id: string, notes: string): Promise<Resource | null> {
-  const resource = await getResource(id)
-  if (!resource) return null
-  
-  resource.notes = notes
-  resource.updatedAt = Date.now()
-  await saveResource(resource)
-  return resource
+  try {
+    return await sendMessage<Resource | null>({ type: 'UPDATE_NOTES', id, notes })
+  } catch (error) {
+    console.error('[Storage] Failed to update notes:', error)
+    return null
+  }
 }
 
 export async function searchResources(query: string): Promise<Resource[]> {
-  if (!query.trim()) {
-    return getAllResources()
-  }
-  
   try {
-    const allResources = await getAllFromStorage()
-    const lowerQuery = query.toLowerCase()
-    
-    return allResources.filter(resource => {
-      const titleMatch = resource.title.toLowerCase().includes(lowerQuery)
-      const urlMatch = resource.url.toLowerCase().includes(lowerQuery)
-      const notesMatch = resource.notes.toLowerCase().includes(lowerQuery)
-      const textMatch = resource.text?.toLowerCase().includes(lowerQuery)
-      const tagsMatch = resource.tags.some(tag => tag.toLowerCase().includes(lowerQuery))
-      
-      return titleMatch || urlMatch || notesMatch || textMatch || tagsMatch
-    })
+    return await sendMessage<Resource[]>({ type: 'SEARCH_RESOURCES', query })
   } catch (error) {
-    console.error('[Storage] Search failed, returning empty:', error)
+    console.error('[Storage] Failed to search resources:', error)
     return []
   }
 }
