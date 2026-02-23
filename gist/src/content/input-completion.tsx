@@ -1,97 +1,112 @@
-import { StrictMode, useState, useEffect, useRef } from 'react'
+import { StrictMode, useState, useEffect, useRef, useCallback } from 'react'
 import { createRoot } from 'react-dom/client'
 import InputCompletion from './components/InputCompletion'
-import { Resource } from './utils/resource-storage'
+import { completionManager, SearchResult } from './utils/completion-manager'
+
+console.log('[InputCompletionApp] Content script loaded!')
 
 function InputCompletionApp() {
   const [visible, setVisible] = useState(false)
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null)
-  const [activeElement, setActiveElement] = useState<HTMLInputElement | HTMLTextAreaElement | null>(null)
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([])
+  const [isSearching, setIsSearching] = useState(false)
   const activeElementRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null)
 
   const isUsefulInput = (element: Element): boolean => {
     if (!(element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement)) return false
-    
+
     const tagName = element.tagName.toLowerCase()
-    
+
     if (tagName === 'textarea') return true
-    
+
     if (tagName === 'input') {
       const input = element as HTMLInputElement
       const type = input.type?.toLowerCase()
       const excludedTypes = ['password', 'hidden', 'submit', 'reset', 'button', 'image', 'file']
-      
+
       if (excludedTypes.includes(type)) return false
-      
+
       const minLength = 3
       if (input.maxLength > 0 && input.maxLength < minLength) return false
-      
+
       return true
     }
-    
+
     return false
   }
 
-  const getCursorPosition = (element: HTMLInputElement | HTMLTextAreaElement): number => {
-    return element.selectionStart || 0
-  }
+  const handleClose = useCallback(() => {
+    console.log('[InputCompletionApp] handleClose called')
+    completionManager.deactivateCompletion()
+    setVisible(false)
+    activeElementRef.current = null
+    setPosition(null)
+    setSearchResults([])
+    setIsSearching(false)
+  }, [])
 
-  const insertTextAtCursor = (element: HTMLInputElement | HTMLTextAreaElement, text: string) => {
-    const cursorPos = getCursorPosition(element)
-    const currentValue = element.value
-    const newValue = currentValue.substring(0, cursorPos) + text + currentValue.substring(cursorPos)
-    
-    element.value = newValue
-    element.focus()
-    element.setSelectionRange(cursorPos + text.length, cursorPos + text.length)
-    
-    element.dispatchEvent(new Event('input', { bubbles: true }))
-    element.dispatchEvent(new Event('change', { bubbles: true }))
-  }
+  const handleResourceSelected = useCallback((result: SearchResult) => {
+    console.log('[InputCompletionApp] handleResourceSelected:', result)
+    completionManager.replaceWithUrl(result.url)
+    handleClose()
+  }, [handleClose])
 
-  const activateCompletion = () => {
+  const activateCompletion = useCallback(() => {
     const focusedElement = document.activeElement
-    
+
+    console.log('[InputCompletionApp] activateCompletion called, focusedElement:', focusedElement)
+
     if (focusedElement && isUsefulInput(focusedElement)) {
       const rect = focusedElement.getBoundingClientRect()
-      
+
       let top = rect.bottom + window.scrollY + 4
       let left = rect.left + window.scrollX
-      
+
       if (top + 400 > window.innerHeight + window.scrollY) {
         top = rect.top + window.scrollY - 404
       }
-      
+
       if (left + 350 > window.innerWidth + window.scrollX) {
         left = window.innerWidth + window.scrollX - 354
       }
-      
-      setActiveElement(focusedElement as HTMLInputElement | HTMLTextAreaElement)
-      activeElementRef.current = focusedElement as HTMLInputElement | HTMLTextAreaElement
+
+      const inputElement = focusedElement as HTMLInputElement | HTMLTextAreaElement
+
+      completionManager.setOptions({
+        onResultsChange: (results) => {
+          console.log('[InputCompletionApp] Results changed:', results)
+          setSearchResults(results)
+        },
+        onClose: () => {
+          console.log('[InputCompletionApp] Completion close callback')
+          handleClose()
+        }
+      })
+
+      completionManager.activateCompletion(inputElement)
+
+      console.log('[InputCompletionApp] Activating completion for element:', inputElement)
+
+      activeElementRef.current = inputElement
       setPosition({ top, left })
       setVisible(true)
+      setSearchResults([])
+      setIsSearching(false)
     }
-  }
-
-  const handleResourceSelected = (resource: Resource) => {
-    if (activeElementRef.current) {
-      insertTextAtCursor(activeElementRef.current, resource.url)
-    }
-  }
-
-  const handleClose = () => {
-    setVisible(false)
-    setActiveElement(null)
-    activeElementRef.current = null
-    setPosition(null)
-  }
+  }, [handleClose])
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.code === 'Space') {
+      console.log('[InputCompletionApp] Key pressed:', e.key, e.code, 'ctrl:', e.ctrlKey, 'meta:', e.metaKey)
+
+      const isSpaceKey = e.key === ' ' || e.code === 'Space' || e.code === 'Unidentified'
+
+      if ((e.ctrlKey || e.metaKey) && isSpaceKey) {
         e.preventDefault()
         e.stopPropagation()
-        
+
+        console.log('[InputCompletionApp] Ctrl+Space detected, visible:', visible)
+
         if (visible) {
           handleClose()
         } else {
@@ -116,7 +131,7 @@ function InputCompletionApp() {
       document.removeEventListener('keydown', handleKeyDown, true)
       document.removeEventListener('mousedown', handleClickOutside, true)
     }
-  }, [visible])
+  }, [visible, activateCompletion, handleClose])
 
   useEffect(() => {
     const handleFocusChange = () => {
@@ -130,14 +145,17 @@ function InputCompletionApp() {
 
     document.addEventListener('focusin', handleFocusChange)
     return () => document.removeEventListener('focusin', handleFocusChange)
-  }, [visible])
+  }, [visible, handleClose])
+
+
 
   return (
     <StrictMode>
       <InputCompletion
         visible={visible}
         position={position}
-        activeElement={activeElement}
+        results={searchResults}
+        isSearching={isSearching}
         onResourceSelected={handleResourceSelected}
         onClose={handleClose}
       />
