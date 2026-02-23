@@ -19,12 +19,27 @@ interface MessageResponse<T = any> {
   error?: string
 }
 
+window.addEventListener('unhandledrejection', (event) => {
+  if (event.reason?.message?.includes('Extension context invalidated') || 
+      event.reason?.message?.includes('The message port closed')) {
+    event.preventDefault()
+    console.warn('[Storage] Extension context invalidated. Reload the page to restore full functionality.')
+  }
+})
+
 async function sendMessage<T>(message: any): Promise<T> {
   return new Promise((resolve, reject) => {
     chrome.runtime.sendMessage(message, (response: MessageResponse<T>) => {
       if (chrome.runtime.lastError) {
-        console.error('[Storage] Chrome runtime error:', chrome.runtime.lastError)
-        reject(new Error(chrome.runtime.lastError.message))
+        const errorMessage = chrome.runtime.lastError.message || 'Unknown error'
+        console.error('[Storage] Chrome runtime error:', errorMessage)
+
+        if (errorMessage.includes('Extension context invalidated')) {
+          console.warn('[Storage] Extension context invalidated. Please reload the page to restore functionality.')
+          reject(new Error('Extension context invalidated. Reload the page to restore functionality.'))
+        } else {
+          reject(new Error(errorMessage))
+        }
       } else if (!response?.success) {
         console.error('[Storage] Message failed:', response?.error)
         reject(new Error(response?.error || 'Unknown error'))

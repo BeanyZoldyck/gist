@@ -9,6 +9,14 @@ const LINK_HINTS_MODE_KEY = 'gist_link_hints_mode_active'
 
 console.log('[LinkHintsApp] Content script loaded!', window.location.href)
 
+window.addEventListener('error', (event) => {
+  if (event.message?.includes('Extension context invalidated') || event.message?.includes('The message port closed')) {
+    event.preventDefault()
+    event.stopPropagation()
+    console.warn('[LinkHintsApp] Extension context invalidated. Reload the page to restore full functionality.')
+  }
+})
+
 console.log('[LinkHintsApp] Adding global keydown listener for debugging')
 document.addEventListener('keydown', (e) => {
   console.log('[LinkHintsApp GLOBAL] Key pressed:', e.key, e.code, 'ctrl:', e.ctrlKey, 'shift:', e.shiftKey, 'meta:', e.metaKey)
