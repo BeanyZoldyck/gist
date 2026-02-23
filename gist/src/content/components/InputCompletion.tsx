@@ -10,6 +10,7 @@ interface InputCompletionProps {
   isSearching: boolean
   onResourceSelected: (resource: SearchResult) => void
   onClose: () => void
+  portalRoot: ShadowRoot
 }
 
 export default function InputCompletion({
@@ -18,10 +19,13 @@ export default function InputCompletion({
   results,
   isSearching,
   onResourceSelected,
-  onClose
+  onClose,
+  portalRoot
 }: InputCompletionProps) {
   const [activeIndex, setActiveIndex] = useState(0)
   const menuRef = useRef<HTMLDivElement>(null)
+
+  console.log('[InputCompletion] Render - visible:', visible, 'position:', position, 'results:', results.length)
 
   useEffect(() => {
     setActiveIndex(0)
@@ -158,6 +162,6 @@ export default function InputCompletion({
         )}
       </div>
     </div>,
-    document.body
+    portalRoot
   )
 }

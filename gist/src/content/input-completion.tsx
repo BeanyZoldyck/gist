@@ -2,35 +2,47 @@ import { StrictMode, useState, useEffect, useRef, useCallback } from 'react'
 import { createRoot } from 'react-dom/client'
 import InputCompletion from './components/InputCompletion'
 import { completionManager, SearchResult } from './utils/completion-manager'
+import { getAllResources } from './utils/resource-storage'
 
 console.log('[InputCompletionApp] Content script loaded!')
 
-function InputCompletionApp() {
+getAllResources().then(resources => {
+  console.log('[InputCompletionApp] All saved resources:', resources)
+}).catch(error => {
+  console.error('[InputCompletionApp] Failed to load resources:', error)
+})
+
+interface InputCompletionAppProps {
+  shadowRoot: ShadowRoot
+}
+
+function InputCompletionApp({ shadowRoot }: InputCompletionAppProps) {
   const [visible, setVisible] = useState(false)
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null)
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const [isSearching, setIsSearching] = useState(false)
-  const activeElementRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null)
+  const activeElementRef = useRef<HTMLInputElement | HTMLTextAreaElement | HTMLElement | null>(null)
+
+  console.log('[InputCompletionApp] Render - visible:', visible, 'position:', position)
 
   const isUsefulInput = (element: Element): boolean => {
-    if (!(element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement)) return false
+    if (!(element instanceof HTMLElement)) return false
 
-    const tagName = element.tagName.toLowerCase()
+    if (element instanceof HTMLTextAreaElement) return true
 
-    if (tagName === 'textarea') return true
-
-    if (tagName === 'input') {
-      const input = element as HTMLInputElement
-      const type = input.type?.toLowerCase()
+    if (element instanceof HTMLInputElement) {
+      const type = element.type?.toLowerCase()
       const excludedTypes = ['password', 'hidden', 'submit', 'reset', 'button', 'image', 'file']
 
       if (excludedTypes.includes(type)) return false
 
       const minLength = 3
-      if (input.maxLength > 0 && input.maxLength < minLength) return false
+      if (element.maxLength > 0 && element.maxLength < minLength) return false
 
       return true
     }
+
+    if (element.isContentEditable) return true
 
     return false
   }
@@ -56,42 +68,58 @@ function InputCompletionApp() {
 
     console.log('[InputCompletionApp] activateCompletion called, focusedElement:', focusedElement)
 
-    if (focusedElement && isUsefulInput(focusedElement)) {
-      const rect = focusedElement.getBoundingClientRect()
+    if (!focusedElement) {
+      console.log('[InputCompletionApp] No focused element, returning')
+      return
+    }
 
-      let top = rect.bottom + window.scrollY + 4
-      let left = rect.left + window.scrollX
+    console.log('[InputCompletionApp] isUsefulInput check:', isUsefulInput(focusedElement))
 
-      if (top + 400 > window.innerHeight + window.scrollY) {
-        top = rect.top + window.scrollY - 404
-      }
+    if (isUsefulInput(focusedElement)) {
+      try {
+        const rect = focusedElement.getBoundingClientRect()
 
-      if (left + 350 > window.innerWidth + window.scrollX) {
-        left = window.innerWidth + window.scrollX - 354
-      }
+        let top = rect.bottom + window.scrollY + 4
+        let left = rect.left + window.scrollX
 
-      const inputElement = focusedElement as HTMLInputElement | HTMLTextAreaElement
-
-      completionManager.setOptions({
-        onResultsChange: (results) => {
-          console.log('[InputCompletionApp] Results changed:', results)
-          setSearchResults(results)
-        },
-        onClose: () => {
-          console.log('[InputCompletionApp] Completion close callback')
-          handleClose()
+        if (top + 400 > window.innerHeight + window.scrollY) {
+          top = rect.top + window.scrollY - 404
         }
-      })
 
-      completionManager.activateCompletion(inputElement)
+        if (left + 350 > window.innerWidth + window.scrollX) {
+          left = window.innerWidth + window.scrollX - 354
+        }
 
-      console.log('[InputCompletionApp] Activating completion for element:', inputElement)
+        const inputElement = focusedElement as HTMLElement
 
-      activeElementRef.current = inputElement
-      setPosition({ top, left })
-      setVisible(true)
-      setSearchResults([])
-      setIsSearching(false)
+        console.log('[InputCompletionApp] Setting completion options')
+        completionManager.setOptions({
+          onResultsChange: (results) => {
+            console.log('[InputCompletionApp] Results changed:', results)
+            setSearchResults(results)
+          },
+          onClose: () => {
+            console.log('[InputCompletionApp] Completion close callback')
+            handleClose()
+          }
+        })
+
+        console.log('[InputCompletionApp] Calling completionManager.activateCompletion')
+        completionManager.activateCompletion(inputElement)
+
+        console.log('[InputCompletionApp] Activating completion for element:', inputElement)
+        console.log('[InputCompletionApp] Setting position:', { top, left })
+
+        activeElementRef.current = inputElement
+        setPosition({ top, left })
+        setVisible(true)
+        setSearchResults([])
+        setIsSearching(false)
+
+        console.log('[InputCompletionApp] State updated - visible:', true)
+      } catch (error) {
+        console.error('[InputCompletionApp] Error in activateCompletion:', error)
+      }
     }
   }, [handleClose])
 
@@ -149,6 +177,8 @@ function InputCompletionApp() {
 
 
 
+  console.log('[InputCompletionApp] Rendering component, visible:', visible, 'position:', position)
+
   return (
     <StrictMode>
       <InputCompletion
@@ -158,6 +188,7 @@ function InputCompletionApp() {
         isSearching={isSearching}
         onResourceSelected={handleResourceSelected}
         onClose={handleClose}
+        portalRoot={shadowRoot}
       />
     </StrictMode>
   )
@@ -170,5 +201,6 @@ const reactRoot = document.createElement('div')
 reactRoot.id = 'react-root'
 shadow.appendChild(reactRoot)
 document.body.appendChild(container)
+
 const root = createRoot(reactRoot)
-root.render(<InputCompletionApp />)
+root.render(<InputCompletionApp shadowRoot={shadow} />)
