@@ -725,10 +725,18 @@ async function handleAutomationAction(action: string, payload: any, sender: chro
       return { success: true, data: 'Navigated forward' }
     }
     default: {
-      if (!sender.tab?.id) {
+      // Determine target tab: prefer sender.tab, otherwise use active tab
+      let tabId: number | undefined = sender.tab?.id
+      if (!tabId) {
+        const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true })
+        tabId = activeTab?.id
+      }
+
+      if (!tabId) {
         return { success: false, error: 'No active tab for content script action' }
       }
-      const response = await chrome.tabs.sendMessage(sender.tab!.id!, {
+
+      const response = await chrome.tabs.sendMessage(tabId, {
         type: 'AUTOMATION_ACTION',
         action,
         payload

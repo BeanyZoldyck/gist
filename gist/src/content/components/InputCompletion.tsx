@@ -42,10 +42,10 @@ export default function InputCompletion({
         return
       }
 
-      if (e.key === 'ArrowDown' || e.key === 'j') {
+      if (e.key === 'ArrowDown') {
         e.preventDefault()
         setActiveIndex(prev => results.length > 0 ? (prev + 1) % results.length : 0)
-      } else if (e.key === 'ArrowUp' || e.key === 'k') {
+      } else if (e.key === 'ArrowUp') {
         e.preventDefault()
         setActiveIndex(prev => results.length > 0 ? (prev - 1 + results.length) % results.length : 0)
       } else if (e.key === 'Enter') {

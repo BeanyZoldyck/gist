@@ -72,6 +72,23 @@ Examples:
 
     const response = await this.callAI(systemPrompt)
 
+    // If the AI requested a snapshot action, request it from the extension background
+    try {
+      const parsed = JSON.parse(response.content)
+      if (parsed && parsed.action === 'snapshot') {
+        // request snapshot via chrome runtime and include result in the returned content
+        const snapshotResult = await requestSnapshotFromBackground()
+        const composite = {
+          ai: response.content,
+          snapshot: snapshotResult
+        }
+        this.addMessage('assistant', JSON.stringify(composite))
+        return { content: JSON.stringify(composite) }
+      }
+    } catch (e) {
+      // not JSON or parsing failed - ignore and continue
+    }
+
     this.addMessage('assistant', response.content)
 
     return response
@@ -128,6 +145,23 @@ Examples:
         fullResponse += chunk
         yield chunk
       }
+      // After the full response is collected, check if the assistant asked for a snapshot
+      try {
+        const parsed = JSON.parse(fullResponse)
+        if (parsed && parsed.action === 'snapshot') {
+          const snapshotResult = await requestSnapshotFromBackground()
+          const composite = {
+            ai: fullResponse,
+            snapshot: snapshotResult
+          }
+          this.addMessage('assistant', JSON.stringify(composite))
+          yield JSON.stringify(composite)
+          return
+        }
+      } catch (e) {
+        // ignore parse errors
+      }
+
       this.addMessage('assistant', fullResponse)
     } catch (error) {
       const errorMessage = `Error: ${error instanceof Error ? error.message : String(error)}`
@@ -309,4 +343,26 @@ export function getAssistant(): AIAssistant {
 
 export function setAssistantConfig(config: AIConfig): void {
   getAssistant().setConfig(config)
+}
+
+// Helper to request an ARIA snapshot from the extension background/content script
+export async function requestSnapshotFromBackground(): Promise<{ url?: string; title?: string; snapshot?: string; success?: boolean; error?: string }> {
+  return new Promise((resolve) => {
+    try {
+      if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.sendMessage) {
+        resolve({ success: false, error: 'Chrome runtime not available' })
+        return
+      }
+
+      chrome.runtime.sendMessage({ type: 'AUTOMATION_ACTION', action: 'snapshot', payload: {} }, (response: any) => {
+        if (!response) {
+          resolve({ success: false, error: 'No response from background' })
+          return
+        }
+        resolve(response.data || { success: false, error: 'No snapshot data' })
+      })
+    } catch (e) {
+      resolve({ success: false, error: e instanceof Error ? e.message : String(e) })
+    }
+  })
 }
