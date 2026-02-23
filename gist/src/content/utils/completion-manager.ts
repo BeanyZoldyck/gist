@@ -2,7 +2,7 @@ import { searchResources as searchQdrant } from './qdrant-content-client'
 import { searchResources as searchIndexedDB, Resource } from './resource-storage'
 
 export interface CompletionState {
-  activeElement: HTMLInputElement | HTMLTextAreaElement | null
+  activeElement: HTMLElement | null
   cursorPosition: number
   visible: boolean
   query: string
@@ -39,9 +39,17 @@ class CompletionManager {
     this.options = options
   }
 
-  activateCompletion(element: HTMLInputElement | HTMLTextAreaElement): CompletionState {
+  activateCompletion(element: HTMLElement): CompletionState {
     this.state.activeElement = element
-    this.state.cursorPosition = element.selectionStart || 0
+
+    if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+      this.state.cursorPosition = element.selectionStart || 0
+    } else if (element.isContentEditable) {
+      this.state.cursorPosition = getContentEditableCursorPosition(element)
+    } else {
+      this.state.cursorPosition = 0
+    }
+
     this.state.visible = true
     this.state.query = ''
 
@@ -69,19 +77,26 @@ class CompletionManager {
     }
   }
 
-  getActiveElement(): HTMLInputElement | HTMLTextAreaElement | null {
+  getActiveElement(): HTMLElement | null {
     return this.state.activeElement
   }
 
   getQuery(): string {
     if (!this.state.activeElement) return ''
-    
+
     const element = this.state.activeElement
-    const cursorPosition = this.state.cursorPosition
-    const selectionEnd = element.selectionEnd || element.value.length
-    
-    this.state.query = element.value.substring(cursorPosition, selectionEnd)
-    return this.state.query
+
+    if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+      const cursorPosition = this.state.cursorPosition
+      const selectionEnd = element.selectionEnd || element.value.length
+
+      this.state.query = element.value.substring(cursorPosition, selectionEnd)
+      return this.state.query
+    } else if (element.isContentEditable) {
+      return this.state.query = getContentEditableQuery(element, this.state.cursorPosition)
+    }
+
+    return ''
   }
 
   async searchCompletion(query: string): Promise<SearchResult[]> {
@@ -126,18 +141,23 @@ class CompletionManager {
     if (!this.state.activeElement) return
 
     const element = this.state.activeElement
-    const cursorPosition = this.state.cursorPosition
-    const query = this.state.query
 
-    const currentValue = element.value
-    const newValue = currentValue.substring(0, cursorPosition) + url + currentValue.substring(cursorPosition + query.length)
+    if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+      const cursorPosition = this.state.cursorPosition
+      const query = this.state.query
 
-    element.value = newValue
-    element.focus()
-    element.setSelectionRange(cursorPosition + url.length, cursorPosition + url.length)
+      const currentValue = element.value
+      const newValue = currentValue.substring(0, cursorPosition) + url + currentValue.substring(cursorPosition + query.length)
 
-    element.dispatchEvent(new Event('input', { bubbles: true }))
-    element.dispatchEvent(new Event('change', { bubbles: true }))
+      element.value = newValue
+      element.focus()
+      element.setSelectionRange(cursorPosition + url.length, cursorPosition + url.length)
+
+      element.dispatchEvent(new Event('input', { bubbles: true }))
+      element.dispatchEvent(new Event('change', { bubbles: true }))
+    } else if (element.isContentEditable) {
+      replaceContentEditableText(element, this.state.cursorPosition, this.state.query, url)
+    }
   }
 
   private setupInputListener(): void {
@@ -171,6 +191,59 @@ class CompletionManager {
     this.inputHandler = debouncedSearch
     element.addEventListener('input', debouncedSearch)
   }
+}
+
+function getContentEditableCursorPosition(element: HTMLElement): number {
+  const selection = window.getSelection()
+  if (!selection || selection.rangeCount === 0) return 0
+
+  const range = selection.getRangeAt(0)
+  const preCaretRange = range.cloneRange()
+  preCaretRange.selectNodeContents(element)
+  preCaretRange.setEnd(range.endContainer, range.endOffset)
+
+  return preCaretRange.toString().length
+}
+
+function getContentEditableQuery(element: HTMLElement, cursorPosition: number): string {
+  const selection = window.getSelection()
+  if (!selection || selection.rangeCount === 0) return ''
+
+  const range = selection.getRangeAt(0)
+  const startOffset = range.startOffset
+  const endOffset = range.endOffset
+
+  const textContent = element.innerText || element.textContent || ''
+
+  if (startOffset === endOffset) {
+    return textContent.substring(cursorPosition)
+  }
+
+  return textContent.substring(startOffset, endOffset)
+}
+
+function replaceContentEditableText(element: HTMLElement, cursorPosition: number, query: string, url: string): void {
+  const textContent = element.innerText || element.textContent || ''
+  const newContent = textContent.substring(0, cursorPosition) + url + textContent.substring(cursorPosition + query.length)
+
+  element.innerText = newContent
+
+  const selection = window.getSelection()
+  if (selection) {
+    const range = document.createRange()
+    const textNode = element.firstChild
+
+    if (textNode) {
+      const nodeValue = (textNode as Text).nodeValue || ''
+      const newCursorPos = cursorPosition + url.length
+      range.setStart(textNode, Math.min(newCursorPos, nodeValue.length))
+      range.setEnd(textNode, Math.min(newCursorPos, nodeValue.length))
+      selection.removeAllRanges()
+      selection.addRange(range)
+    }
+  }
+
+  element.dispatchEvent(new Event('input', { bubbles: true }))
 }
 
 function calculateRelevanceScore(query: string, resource: Resource): number {
