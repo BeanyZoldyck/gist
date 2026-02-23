@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Resource, getAllResources, deleteResource, deleteAllResources, updateResourceTags, updateResourceNotes, searchResources, formatResourceDate, getResourcePreviewText } from '../content/utils/resource-storage'
 import AIChat from './AIChat'
+import AskPanel from './AskPanel'
 import './AIChat.css'
 
 interface EditModal {
@@ -9,7 +10,7 @@ interface EditModal {
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'resources' | 'ai'>('resources')
+  const [activeTab, setActiveTab] = useState<'resources' | 'ai' | 'ask'>('resources')
   const [resources, setResources] = useState<Resource[]>([])
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(true)
@@ -182,6 +183,12 @@ export default function App() {
           >
             🤖 AI Assistant
           </button>
+          <button
+            className={`tab-button ${activeTab === 'ask' ? 'active' : ''}`}
+            onClick={() => setActiveTab('ask')}
+          >
+            💬 Ask
+          </button>
         </div>
       </div>
 
@@ -295,6 +302,10 @@ export default function App() {
 
       {activeTab === 'ai' && (
         <AIChat />
+      )}
+
+      {activeTab === 'ask' && (
+        <AskPanel />
       )}
 
       {editModal.show && (

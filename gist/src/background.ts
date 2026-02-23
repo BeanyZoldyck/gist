@@ -1,4 +1,5 @@
 import { searchResources as searchQdrant, upsertResource, deleteResource as deleteFromQdrant } from './utils/qdrant-client'
+import { queryWithLLM, getAIConfig } from './utils/rag-query'
 
 export interface Resource {
   id: string
@@ -680,6 +681,33 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
           broadcastUpdate()
           sendResponse({ success: true, data: resource })
+          break
+        }
+        case 'QUERY_WITH_LLM': {
+          const question = message.question?.trim()
+          if (!question) {
+            sendResponse({ success: false, error: 'Question is required' })
+            return
+          }
+
+          const aiConfig = await getAIConfig()
+          if (!aiConfig) {
+            sendResponse({ success: false, error: 'AI not configured. Please set up AI in extension settings.' })
+            return
+          }
+
+          try {
+            const result = await queryWithLLM(question, 5)
+            sendResponse({ success: true, data: result })
+          } catch (error) {
+            console.error('[Background] RAG query failed:', error)
+            sendResponse({ success: false, error: error instanceof Error ? error.message : String(error) })
+          }
+          break
+        }
+        case 'CHECK_AI_CONFIG': {
+          const config = await getAIConfig()
+          sendResponse({ success: true, data: { configured: !!config } })
           break
         }
         default:
