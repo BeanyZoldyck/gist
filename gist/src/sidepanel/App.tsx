@@ -9,7 +9,7 @@ interface EditModal {
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'resources' | 'automation' | 'ai'>('resources')
+  const [activeTab, setActiveTab] = useState<'resources' | 'ai'>('resources')
   const [resources, setResources] = useState<Resource[]>([])
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(true)
@@ -18,9 +18,6 @@ export default function App() {
   const [editNotes, setEditNotes] = useState('')
   const [hoveredCard, setHoveredCard] = useState<string | null>(null)
   const [hoveredTitle, setHoveredTitle] = useState<string | null>(null)
-  const [automationLogs, setAutomationLogs] = useState<string[]>([])
-  const [automationCommand, setAutomationCommand] = useState('')
-  const [automationPayload, setAutomationPayload] = useState('')
 
   useEffect(() => {
     console.log('[SidePanel] App mounted')
@@ -54,61 +51,6 @@ export default function App() {
     chrome.runtime.onMessage.addListener(handleMessage)
     return () => chrome.runtime.onMessage.removeListener(handleMessage)
   }, [])
-
-  const executeAutomation = async () => {
-    try {
-      const payload = automationPayload ? JSON.parse(automationPayload) : undefined
-      const response = await chrome.runtime.sendMessage({
-        type: 'AUTOMATION_ACTION',
-        action: automationCommand,
-        payload
-      })
-
-      if (response.success) {
-        setAutomationLogs(function(prev) {
-          const msg = '[OK] ' + automationCommand + ': ' + String(response.data)
-          return [msg].concat(prev).slice(0, 20)
-        })
-      } else {
-        setAutomationLogs(function(prev) {
-          const msg = '[FAIL] ' + automationCommand + ': ' + String(response.error)
-          return [msg].concat(prev).slice(0, 20)
-        })
-      }
-    } catch (error) {
-      setAutomationLogs(function(prev) {
-        const msg = '[ERROR] ' + automationCommand + ': ' + (error instanceof Error ? error.message : String(error))
-        return [msg].concat(prev).slice(0, 20)
-      })
-    }
-  }
-
-  const snapshot = async () => {
-    try {
-      const response = await chrome.runtime.sendMessage({
-        type: 'AUTOMATION_ACTION',
-        action: 'snapshot'
-      })
-
-      if (response.success) {
-        setAutomationLogs(function(prev) {
-          const msg = '[SNAP] ' + String(response.data.title)
-          return [msg].concat(prev).slice(0, 20)
-        })
-        console.log('[SidePanel] Snapshot:', response.data)
-      } else {
-        setAutomationLogs(function(prev) {
-          const msg = '[FAIL] Snapshot failed: ' + String(response.error)
-          return [msg].concat(prev).slice(0, 20)
-        })
-      }
-    } catch (error) {
-      setAutomationLogs(function(prev) {
-        const msg = '[ERROR] Snapshot failed: ' + (error instanceof Error ? error.message : String(error))
-        return [msg].concat(prev).slice(0, 20)
-      })
-    }
-  }
 
   const loadResources = async () => {
     setLoading(true)
@@ -235,12 +177,6 @@ export default function App() {
             📚 Resources
           </button>
           <button
-            className={`tab-button ${activeTab === 'automation' ? 'active' : ''}`}
-            onClick={() => setActiveTab('automation')}
-          >
-            ⚙️ Automation
-          </button>
-          <button
             className={`tab-button ${activeTab === 'ai' ? 'active' : ''}`}
             onClick={() => setActiveTab('ai')}
           >
@@ -354,54 +290,6 @@ export default function App() {
               </div>
             )}
           </div>
-        </div>
-      )}
-
-      {activeTab === 'automation' && (
-        <div className="automation-panel">
-          <div className="panel-header">
-            <h2 className="header-title">AUTOMATION</h2>
-          </div>
-          <div className="automation-quick-actions">
-            <button onClick={snapshot} className="btn-automation-action">
-              Snapshot
-            </button>
-            <button onClick={() => { setAutomationCommand('click'); setAutomationPayload(''); }} className="btn-automation-action">
-              Click
-            </button>
-            <button onClick={() => { setAutomationCommand('type'); setAutomationPayload(''); }} className="btn-automation-action">
-              Type
-            </button>
-            <button onClick={() => { setAutomationCommand('wait'); setAutomationPayload(JSON.stringify({ time: 1})); }} className="btn-automation-action">
-              Wait
-            </button>
-          </div>
-          <div className="automation-custom">
-            <input
-              type="text"
-              value={automationCommand}
-              onChange={(e) => setAutomationCommand(e.target.value)}
-              placeholder="Action (e.g., navigate, click, type)"
-              className="automation-command-input"
-            />
-            <input
-              type="text"
-              value={automationPayload}
-              onChange={(e) => setAutomationPayload(e.target.value)}
-              placeholder={'Payload JSON (e.g., {"url": "https://example.com"})'}
-              className="automation-payload-input"
-            />
-            <button onClick={executeAutomation} className="btn-execute">
-              ▶ Execute
-            </button>
-          </div>
-          {automationLogs.length > 0 && (
-            <div className="automation-logs">
-              {automationLogs.map((log, i) => (
-                <div key={i} className="automation-log-entry">{log}</div>
-              ))}
-            </div>
-          )}
         </div>
       )}
 

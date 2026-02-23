@@ -6,9 +6,9 @@ export default function AIChatPanel() {
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
-  const [apiKey, setApiKey] = useState('')
-  const [model, setModel] = useState('openai/gpt-4o')
-  const [baseUrl, setBaseUrl] = useState('https://api.openai.com')
+  const [apiKey, setApiKey] = useState(import.meta.env.VITE_AI_API_KEY || '')
+  const [model, setModel] = useState(import.meta.env.VITE_AI_MODEL || 'openrouter/free')
+  const [baseUrl, setBaseUrl] = useState(import.meta.env.VITE_AI_BASE_URL || 'https://openrouter.ai/api/v1')
   const [pageSnapshot, setPageSnapshot] = useState<string>('')
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -21,8 +21,8 @@ export default function AIChatPanel() {
         setApiKey(result.aiApiKey)
         setAssistantConfig({
           apiKey: result.aiApiKey,
-          model: result.aiModel || 'openai/gpt-4o',
-          baseUrl: result.aiBaseUrl || 'https://api.openai.com'
+          model: result.aiModel || 'glm-4.7-flash',
+          baseUrl: result.aiBaseUrl || 'https://api.z.ai/api/paas/v4'
         })
       }
       if (result.aiModel) setModel(result.aiModel)
@@ -130,6 +130,21 @@ export default function AIChatPanel() {
           ? { ...msg, isStreaming: false }
           : msg
       ))
+
+      const actionResult = await parseAndExecuteAction(fullContent)
+      if (actionResult) {
+        const resultMessage: AIMessage = {
+          id: `msg_${Date.now()}`,
+          role: 'assistant',
+          content: actionResult,
+          timestamp: Date.now()
+        }
+        setMessages(prev => [...prev, resultMessage])
+
+        if (actionResult.includes('snapshot')) {
+          await updatePageSnapshot()
+        }
+      }
     } catch (error) {
       const errorMessage = `Error: ${error instanceof Error ? error.message : String(error)}`
       setMessages(prev => prev.map(msg =>
@@ -139,6 +154,68 @@ export default function AIChatPanel() {
       ))
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const parseAndExecuteAction = async (response: string): Promise<string | null> => {
+    try {
+      console.log('[AIChat] Parsing response:', response.substring(0, 200))
+      
+      let cleanResponse = response.trim()
+      
+      if (cleanResponse.startsWith('Error:') || cleanResponse.startsWith('error:')) {
+        console.error('[AIChat] AI returned error:', response)
+        return `❌ AI Error: ${response.substring(0, 200)}`
+      }
+      
+      cleanResponse = cleanResponse.replace(/```json\n?|\n?```/g, '').trim()
+      
+      const jsonMatch = cleanResponse.match(/\{[\s\S]*\}/)
+      if (!jsonMatch) {
+        console.error('[AIChat] No JSON found in response:', cleanResponse.substring(0, 200))
+        return `⚠️ Could not parse action from response. Please try rephrasing.`
+      }
+      
+      const parsed = JSON.parse(jsonMatch[0])
+
+      if (!parsed.action) {
+        console.error('[AIChat] No action in parsed JSON:', parsed)
+        return `⚠️ No action found. Response: ${cleanResponse.substring(0, 100)}`
+      }
+
+      const { action, parameters } = parsed
+
+      if (action === 'ask_snapshot') {
+        return '📸 Please take a snapshot of page using button above so I can see the current state.'
+      }
+
+      console.log('[AIChat] Executing action:', action, parameters)
+
+      const result = await chrome.runtime.sendMessage({
+        type: 'AUTOMATION_ACTION',
+        action,
+        payload: parameters || {}
+      })
+
+      if (result.success) {
+        return `✓ Executed: ${action}\n${result.data}`
+      } else {
+        return `✗ Failed: ${action}\n${result.error}`
+      }
+    } catch (error) {
+      console.error('[AIChat] Error parsing action:', error, 'Response:', response.substring(0, 200))
+      return `⚠️ Failed to parse action. Error: ${error instanceof Error ? error.message : String(error)}`
+    }
+  }
+
+  const updatePageSnapshot = async () => {
+    const response = await chrome.runtime.sendMessage({
+      type: 'AUTOMATION_ACTION',
+      action: 'snapshot'
+    })
+
+    if (response.success) {
+      setPageSnapshot(response.data.snapshot)
     }
   }
 
@@ -171,7 +248,7 @@ export default function AIChatPanel() {
                 type="text"
                 value={model}
                 onChange={(e) => setModel(e.target.value)}
-                placeholder="openai/gpt-4o"
+                placeholder="glm-4.7-flash"
                 className="setting-input"
               />
             </div>
@@ -181,7 +258,7 @@ export default function AIChatPanel() {
                 type="text"
                 value={baseUrl}
                 onChange={(e) => setBaseUrl(e.target.value)}
-                placeholder="https://api.openai.com"
+                placeholder="https://api.z.ai/api/paas/v4"
                 className="setting-input"
               />
             </div>

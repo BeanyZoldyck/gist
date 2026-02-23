@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 
 export interface TagPromptProps {
   visible: boolean
@@ -119,7 +119,6 @@ export default function TagPrompt({ visible, position, url, title: _title, onSav
 
   return (
     <div
-      ref={containerRef}
       className="tag-prompt"
       style={{
         position: 'fixed',

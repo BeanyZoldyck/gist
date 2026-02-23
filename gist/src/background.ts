@@ -325,7 +325,7 @@ function broadcastUpdate() {
   })
 }
 
-async function saveCurrentTabUrl() {
+  async function saveCurrentTabUrl() {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
     if (!tab?.url) {
@@ -352,6 +352,30 @@ async function saveCurrentTabUrl() {
     }
 
     await saveResourceToDB(resource)
+
+    // Try to upsert to Qdrant (non-fatal)
+    try {
+      await upsertResource({
+        id: resource.id,
+        vector: [],
+        payload: {
+          url: resource.url,
+          title: resource.title,
+          text: resource.text || '',
+          notes: resource.notes,
+          tags: resource.tags,
+          createdAt: resource.createdAt,
+          updatedAt: resource.updatedAt || resource.createdAt,
+          pageUrl: resource.pageUrl,
+          pageTitle: resource.pageTitle,
+          pageDescription: resource.pageDescription || '',
+          linkContext: resource.linkContext || ''
+        }
+      })
+    } catch (e) {
+      console.log('[Background] Qdrant upsert failed (non-fatal):', e)
+    }
+
     broadcastUpdate()
     console.log('[Background] Saved current URL:', url)
   } catch (error) {
@@ -438,6 +462,29 @@ async function saveCurrentTabWithMetadata() {
     }
 
     await saveResourceToDB(resource)
+    // Try to upsert to Qdrant (non-fatal)
+    try {
+      await upsertResource({
+        id: resource.id,
+        vector: [],
+        payload: {
+          url: resource.url,
+          title: resource.title,
+          text: resource.text || '',
+          notes: resource.notes,
+          tags: resource.tags,
+          createdAt: resource.createdAt,
+          updatedAt: resource.updatedAt || resource.createdAt,
+          pageUrl: resource.pageUrl,
+          pageTitle: resource.pageTitle,
+          pageDescription: resource.pageDescription || '',
+          linkContext: resource.linkContext || ''
+        }
+      })
+    } catch (e) {
+      console.log('[Background] Qdrant upsert failed (non-fatal):', e)
+    }
+
     broadcastUpdate()
     console.log('[Background] Saved current URL with metadata:', url)
 
@@ -517,7 +564,19 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           break
         }
         case 'DELETE_ALL_RESOURCES': {
+          // capture all resource ids before clearing local DB so we can try to remove from Qdrant
+          const allResources = await getAllFromDB()
           await deleteAllResourcesFromDB()
+
+          // Attempt to delete each resource from Qdrant (non-fatal)
+          for (const r of allResources) {
+            try {
+              await deleteFromQdrant(r.id)
+            } catch (e) {
+              console.log('[Background] Qdrant delete failed for id', r.id, '(non-fatal):', e)
+            }
+          }
+
           broadcastUpdate()
           sendResponse({ success: true })
           break
@@ -595,6 +654,30 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
             linkContext: ''
           }
           await saveResourceToDB(resource)
+
+          // Try to upsert to Qdrant (non-fatal)
+          try {
+            await upsertResource({
+              id: resource.id,
+              vector: [],
+              payload: {
+                url: resource.url,
+                title: resource.title,
+                text: resource.text || '',
+                notes: resource.notes,
+                tags: resource.tags,
+                createdAt: resource.createdAt,
+                updatedAt: resource.updatedAt || resource.createdAt,
+                pageUrl: resource.pageUrl,
+                pageTitle: resource.pageTitle,
+                pageDescription: resource.pageDescription || '',
+                linkContext: resource.linkContext || ''
+              }
+            })
+          } catch (e) {
+            console.log('[Background] Qdrant upsert failed (non-fatal):', e)
+          }
+
           broadcastUpdate()
           sendResponse({ success: true, data: resource })
           break
