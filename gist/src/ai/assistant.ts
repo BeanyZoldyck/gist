@@ -45,26 +45,30 @@ export class AIAssistant {
  - type: Type text into an input field
  - wait: Wait for specified time (seconds)
 
-Provide clear instructions in plain text about what to do.
-
 ${pageContext}
 
-Provide your response in the format:
-Action: <action_name>
-Parameters: <json_parameters>
+IMPORTANT: Respond ONLY with a JSON object containing the action to execute. Format:
+{
+  "action": "action_name",
+  "parameters": {}
+}
 
-For example:
-Action: snapshot
-Parameters: {}
+Available actions and their parameters:
+- snapshot: {}
+- navigate: { "url": "https://example.com" }
+- goBack: {}
+- goForward: {}
+- click: { "element": "Submit" } or { "ref": "1" }
+- type: { "text": "Hello", "element": "Input" } or { "text": "Hello", "ref": "2" }
+- wait: { "time": 2 }
 
-Action: click
-Parameters: { "element": "Submit" }
+If you need more context to perform the action, ask the user to take a snapshot first by setting action to "ask_snapshot".
 
-Respond with your action or ask questions if you need more information.
-
-IMPORTANT: If you need more context, ask for a snapshot first using the "Capture Snapshot" button.
-
-Don't include any other text or explanations.`
+Examples:
+{"action": "snapshot", "parameters": {}}
+{"action": "click", "parameters": {"element": "Submit"}}
+{"action": "type", "parameters": {"text": "hello", "element": "Search input"}}
+{"action": "navigate", "parameters": {"url": "https://google.com"}}`
 
     const response = await this.callAI(systemPrompt)
 
@@ -92,26 +96,30 @@ Don't include any other text or explanations.`
  - type: Type text into an input field
  - wait: Wait for specified time (seconds)
 
-Provide clear instructions in plain text about what to do.
-
 ${pageContext}
 
-Provide your response in the format:
-Action: <action_name>
-Parameters: <json_parameters>
+IMPORTANT: Respond ONLY with a JSON object containing the action to execute. Format:
+{
+  "action": "action_name",
+  "parameters": {}
+}
 
-For example:
-Action: snapshot
-Parameters: {}
+Available actions and their parameters:
+- snapshot: {}
+- navigate: { "url": "https://example.com" }
+- goBack: {}
+- goForward: {}
+- click: { "element": "Submit" } or { "ref": "1" }
+- type: { "text": "Hello", "element": "Input" } or { "text": "Hello", "ref": "2" }
+- wait: { "time": 2 }
 
-Action: click
-Parameters: { "element": "Submit" }
+If you need more context to perform the action, ask the user to take a snapshot first by setting action to "ask_snapshot".
 
-Respond with your action or ask questions if you need more information.
-
-IMPORTANT: If you need more context, ask for a snapshot first using the "Capture Snapshot" button.
-
-Don't include any other text or explanations.`
+Examples:
+{"action": "snapshot", "parameters": {}}
+{"action": "click", "parameters": {"element": "Submit"}}
+{"action": "type", "parameters": {"text": "hello", "element": "Search input"}}
+{"action": "navigate", "parameters": {"url": "https://google.com"}}`
 
     let fullResponse = ''
     try {
@@ -139,7 +147,7 @@ Don't include any other text or explanations.`
         content: msg.content
       }))
 
-      const response = await fetch(`${this.config.baseUrl}/v1/chat/completions`, {
+      const response = await fetch(`${this.config.baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -152,12 +160,13 @@ Don't include any other text or explanations.`
             ...messages.slice(-10)
           ],
           temperature: 0.7,
-          max_tokens: 500
+          max_tokens: 1000
         })
       })
 
       if (!response.ok) {
-        throw new Error(`AI API error: ${response.status}`)
+        const errorText = await response.text()
+        throw new Error(`AI API error: ${response.status} - ${errorText}`)
       }
 
       const data = await response.json()
@@ -179,26 +188,33 @@ Don't include any other text or explanations.`
         content: msg.content
       }))
 
-      const response = await fetch(`${this.config.baseUrl}/v1/chat/completions`, {
+      const requestPayload = {
+        model: this.config.model,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          ...messages.slice(-10)
+        ],
+        temperature: 0.7,
+        max_tokens: 1000,
+        stream: true
+      }
+
+      console.log('[AI Assistant] Request payload:', JSON.stringify(requestPayload, null, 2))
+
+      const response = await fetch(`${this.config.baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.config.apiKey}`
         },
-        body: JSON.stringify({
-          model: this.config.model,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            ...messages.slice(-10)
-          ],
-          temperature: 0.7,
-          max_tokens: 500,
-          stream: true
-        })
+        body: JSON.stringify(requestPayload)
       })
 
       if (!response.ok) {
-        throw new Error(`AI API error: ${response.status}`)
+        const errorText = await response.text()
+        console.error('[AI Assistant] API error:', response.status, errorText)
+        yield `Error: AI API returned ${response.status} - ${errorText.substring(0, 200)}`
+        return
       }
 
       const reader = response.body?.getReader()
@@ -224,10 +240,11 @@ Don't include any other text or explanations.`
               const parsed = JSON.parse(data)
               const content = parsed.choices?.[0]?.delta?.content
               if (content) {
+                console.log('[AI Assistant] Received chunk:', content.substring(0, 50))
                 yield content
               }
             } catch (e) {
-              console.error('[AI Assistant] Error parsing SSE data:', e)
+              console.error('[AI Assistant] Error parsing SSE data:', e, 'Data:', data.substring(0, 100))
             }
           }
         }

@@ -263,7 +263,7 @@ export default function InputCompletion({
         {results.length === 0 && !isSearching && (
           <div className="completion-menu-empty">
             <span className="completion-menu-empty-icon">🔍</span>
-            <div className="completion-menu-empty-text">Type to search saved resources...</div>
+            <div className="completion-menu-empty-text"></div>
           </div>
         )}
 

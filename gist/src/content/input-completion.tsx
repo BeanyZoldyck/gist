@@ -6,6 +6,29 @@ import { getAllResources } from './utils/resource-storage'
 
 console.log('[InputCompletionApp] ========== CONTENT SCRIPT LOADED ==========')
 
+let completionVisible = false
+let completionActivateFn: (() => void) | null = null
+let completionCloseFn: (() => void) | null = null
+
+const setupCompletionListeners = (activateFn: () => void, closeFn: () => void) => {
+  completionActivateFn = activateFn
+  completionCloseFn = closeFn
+}
+
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.code === 'Space') {
+    console.log('[InputCompletionApp GLOBAL] Ctrl+Space detected, visible:', completionVisible)
+    e.preventDefault()
+    e.stopPropagation()
+    
+    if (completionVisible && completionCloseFn) {
+      completionCloseFn()
+    } else if (completionActivateFn) {
+      completionActivateFn()
+    }
+  }
+}, true)
+
 window.addEventListener('error', (event) => {
   if (event.message?.includes('Extension context invalidated') || event.message?.includes('The message port closed')) {
     event.preventDefault()
@@ -71,6 +94,60 @@ function InputCompletionApp({ shadowRoot }: InputCompletionAppProps) {
     handleClose()
   }, [handleClose])
 
+  const getCursorPosition = (element: HTMLElement): { top: number; left: number } | null => {
+    if (element.isContentEditable) {
+      const selection = window.getSelection()
+      if (selection && selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0)
+        const rect = range.getBoundingClientRect()
+        return {
+          top: rect.bottom + window.scrollY,
+          left: rect.left + window.scrollX
+        }
+      }
+      return null
+    }
+
+    if (element instanceof HTMLTextAreaElement || element instanceof HTMLInputElement) {
+      const textarea = element
+      const mirror = document.createElement('div')
+      const styles = window.getComputedStyle(textarea)
+      
+      const propNames = [
+        'font-family', 'font-size', 'font-weight', 'font-style',
+        'letter-spacing', 'line-height', 'text-transform', 'word-spacing',
+        'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
+        'border-top-width', 'border-right-width', 'border-bottom-width', 'border-left-width',
+        'box-sizing', 'white-space', 'word-wrap', 'word-break'
+      ]
+      
+      propNames.forEach(prop => {
+        mirror.style[prop as any] = styles.getPropertyValue(prop)
+      })
+      
+      mirror.style.position = 'absolute'
+      mirror.style.visibility = 'hidden'
+      mirror.style.width = styles.width
+      mirror.style.top = '-9999px'
+      mirror.style.left = '-9999px'
+      
+      const textBeforeCursor = textarea.value.substring(0, textarea.selectionStart ?? 0)
+      mirror.textContent = textBeforeCursor.replace(/\n$/g, '\n ')
+      
+      document.body.appendChild(mirror)
+      
+      const cursorRect = mirror.getBoundingClientRect()
+      document.body.removeChild(mirror)
+      
+      return {
+        top: cursorRect.bottom + window.scrollY,
+        left: cursorRect.left + window.scrollX
+      }
+    }
+    
+    return null
+  }
+
   const activateCompletion = useCallback(() => {
     const focusedElement = document.activeElement
 
@@ -86,20 +163,28 @@ function InputCompletionApp({ shadowRoot }: InputCompletionAppProps) {
 
     if (isUsefulInput(focusedElement)) {
       try {
-        const rect = focusedElement.getBoundingClientRect()
+        const inputElement = focusedElement as HTMLElement
+        
+        let top: number, left: number
+        let rect: DOMRect | null = null
+        
+        const cursorPos = getCursorPosition(inputElement)
+        if (cursorPos) {
+          top = cursorPos.top + 4
+          left = cursorPos.left
+        } else {
+          rect = inputElement.getBoundingClientRect()
+          top = rect.bottom + window.scrollY + 4
+          left = rect.left + window.scrollX
+        }
 
-        let top = rect.bottom + window.scrollY + 4
-        let left = rect.left + window.scrollX
-
-        if (top + 400 > window.innerHeight + window.scrollY) {
+        if (rect && top + 400 > window.innerHeight + window.scrollY) {
           top = rect.top + window.scrollY - 404
         }
 
         if (left + 350 > window.innerWidth + window.scrollX) {
           left = window.innerWidth + window.scrollX - 354
         }
-
-        const inputElement = focusedElement as HTMLElement
 
         console.log('[InputCompletionApp] Setting completion options')
         completionManager.setOptions({
@@ -133,12 +218,20 @@ function InputCompletionApp({ shadowRoot }: InputCompletionAppProps) {
   }, [handleClose])
 
   useEffect(() => {
+    setupCompletionListeners(activateCompletion, handleClose)
+  }, [activateCompletion, handleClose])
+
+  useEffect(() => {
+    completionVisible = visible
+  }, [visible])
+
+  useEffect(() => {
     console.log('[InputCompletionApp] Setting up event listeners')
 
     const handleKeyDown = (e: KeyboardEvent) => {
       console.log('[InputCompletionApp] Key pressed:', e.key, e.code, 'ctrl:', e.ctrlKey, 'meta:', e.metaKey)
 
-      const isSpaceKey = e.key === ' ' || e.code === 'Space' || e.code === 'Unidentified'
+      const isSpaceKey = e.code === 'Space'
 
       if ((e.ctrlKey || e.metaKey) && isSpaceKey) {
         console.log('[InputCompletionApp] Ctrl+Space detected, visible:', visible)
@@ -164,7 +257,8 @@ function InputCompletionApp({ shadowRoot }: InputCompletionAppProps) {
       }
     }
 
-    document.addEventListener('keydown', handleKeyDown, true)
+document.addEventListener('keydown', handleKeyDown, true)
+    window.addEventListener('keydown', handleKeyDown, true)
     document.addEventListener('mousedown', handleClickOutside, true)
 
     return () => {
