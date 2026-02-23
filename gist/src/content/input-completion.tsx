@@ -4,7 +4,7 @@ import InputCompletion from './components/InputCompletion'
 import { completionManager, SearchResult } from './utils/completion-manager'
 import { getAllResources } from './utils/resource-storage'
 
-console.log('[InputCompletionApp] Content script loaded!')
+console.log('[InputCompletionApp] ========== CONTENT SCRIPT LOADED ==========')
 
 getAllResources().then(resources => {
   console.log('[InputCompletionApp] All saved resources:', resources)
@@ -73,6 +73,7 @@ function InputCompletionApp({ shadowRoot }: InputCompletionAppProps) {
       return
     }
 
+    console.log('[InputCompletionApp] Element type:', focusedElement.tagName, 'contenteditable:', (focusedElement as HTMLElement).isContentEditable)
     console.log('[InputCompletionApp] isUsefulInput check:', isUsefulInput(focusedElement))
 
     if (isUsefulInput(focusedElement)) {
@@ -124,20 +125,23 @@ function InputCompletionApp({ shadowRoot }: InputCompletionAppProps) {
   }, [handleClose])
 
   useEffect(() => {
+    console.log('[InputCompletionApp] Setting up event listeners')
+
     const handleKeyDown = (e: KeyboardEvent) => {
       console.log('[InputCompletionApp] Key pressed:', e.key, e.code, 'ctrl:', e.ctrlKey, 'meta:', e.metaKey)
 
       const isSpaceKey = e.key === ' ' || e.code === 'Space' || e.code === 'Unidentified'
 
       if ((e.ctrlKey || e.metaKey) && isSpaceKey) {
+        console.log('[InputCompletionApp] Ctrl+Space detected, visible:', visible)
         e.preventDefault()
         e.stopPropagation()
 
-        console.log('[InputCompletionApp] Ctrl+Space detected, visible:', visible)
-
         if (visible) {
+          console.log('[InputCompletionApp] Closing completion')
           handleClose()
         } else {
+          console.log('[InputCompletionApp] Activating completion')
           activateCompletion()
         }
       }
@@ -156,6 +160,7 @@ function InputCompletionApp({ shadowRoot }: InputCompletionAppProps) {
     document.addEventListener('mousedown', handleClickOutside, true)
 
     return () => {
+      console.log('[InputCompletionApp] Cleaning up event listeners')
       document.removeEventListener('keydown', handleKeyDown, true)
       document.removeEventListener('mousedown', handleClickOutside, true)
     }

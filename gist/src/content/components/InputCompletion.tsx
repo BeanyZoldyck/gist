@@ -84,9 +84,11 @@ export default function InputCompletion({
         position: 'fixed',
         top: `${position.top}px`,
         left: `${position.left}px`,
+        backgroundColor: 'var(--fallback-b1, oklch(0.28 0.046 264.705)',
+        opacity: 1
       }}
     >
-      <div className="bg-base-300 rounded-box">
+      <div className="bg-base-300 rounded-box" style={{ opacity: 1 }}>
         {results.length > 0 && (
           <div className="p-2 border-b border-base-200">
             <div className="text-xs font-semibold opacity-50 uppercase">Insert Saved Resource</div>
