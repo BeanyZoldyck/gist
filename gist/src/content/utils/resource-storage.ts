@@ -27,26 +27,52 @@ window.addEventListener('unhandledrejection', (event) => {
   }
 })
 
-async function sendMessage<T>(message: any): Promise<T> {
+async function sendMessage<T>(message: any, timeoutMs = 5000): Promise<T> {
   return new Promise((resolve, reject) => {
-    chrome.runtime.sendMessage(message, (response: MessageResponse<T>) => {
-      if (chrome.runtime.lastError) {
-        const errorMessage = chrome.runtime.lastError.message || 'Unknown error'
-        console.error('[Storage] Chrome runtime error:', errorMessage)
-
-        if (errorMessage.includes('Extension context invalidated')) {
-          console.warn('[Storage] Extension context invalidated. Please reload the page to restore functionality.')
-          reject(new Error('Extension context invalidated. Reload the page to restore functionality.'))
-        } else {
-          reject(new Error(errorMessage))
-        }
-      } else if (!response?.success) {
-        console.error('[Storage] Message failed:', response?.error)
-        reject(new Error(response?.error || 'Unknown error'))
-      } else {
-        resolve(response.data as T)
+    try {
+      if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.sendMessage) {
+        reject(new Error('Chrome runtime not available'))
+        return
       }
-    })
+
+      let settled = false
+      const timer = setTimeout(() => {
+        if (settled) return
+        settled = true
+        reject(new Error('No response from extension (timeout)'))
+      }, timeoutMs)
+
+      chrome.runtime.sendMessage(message, (response: MessageResponse<T> | undefined) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+
+        if (chrome.runtime.lastError) {
+          const errMsg = chrome.runtime.lastError.message || 'Unknown chrome.runtime error'
+          console.error('[Storage] chrome.runtime.lastError:', errMsg)
+          if (errMsg.includes('Extension context invalidated')) {
+            reject(new Error('Extension context invalidated. Reload the page to restore functionality.'))
+          } else {
+            reject(new Error(errMsg))
+          }
+          return
+        }
+
+        if (!response) {
+          reject(new Error('No response payload from extension'))
+          return
+        }
+
+        if (!response.success) {
+          reject(new Error(response.error || 'Extension returned unsuccessful response'))
+          return
+        }
+
+        resolve(response.data as T)
+      })
+    } catch (err) {
+      reject(err instanceof Error ? err : new Error(String(err)))
+    }
   })
 }
 
