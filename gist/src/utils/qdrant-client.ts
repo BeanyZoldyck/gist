@@ -16,6 +16,10 @@ interface QdrantPoint {
     tags: string[]
     createdAt: number
     updatedAt?: number
+    pageUrl?: string
+    pageTitle?: string
+    pageDescription?: string
+    linkContext?: string
   }
 }
 
