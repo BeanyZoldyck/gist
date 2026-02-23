@@ -21,9 +21,12 @@ export default defineConfig({
   ],
   server: {
     cors: {
-      origin: [
-        /chrome-extension:\/\//,
-      ],
+      origin: '*',
+    },
+    // @ts-expect-error - ws: true is valid but TypeScript type definition is incorrect
+    ws: true,
+    hmr: {
+      overlay: false,
     },
   },
 })

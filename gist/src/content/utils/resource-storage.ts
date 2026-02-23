@@ -9,58 +9,24 @@ export interface Resource {
   updatedAt?: number
 }
 
-const DB_NAME = 'gist-resources'
-const DB_VERSION = 1
-const STORE_NAME = 'resources'
+const STORAGE_KEY = 'gist_resources'
 
-function getDB(): Promise<IDBDatabase> {
+async function getAllFromStorage(): Promise<Resource[]> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION)
-
-    request.onerror = () => {
-      console.error('[IndexedDB] Failed to open database:', request.error)
-      reject(request.error)
-    }
-
-    request.onsuccess = () => {
-      const db = request.result
-      resolve(db)
-    }
-
-    request.onupgradeneeded = (event) => {
-      const db = (event.target as IDBOpenDBRequest).result
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        const store = db.createObjectStore(STORE_NAME, { keyPath: 'id' })
-        store.createIndex('url', 'url', { unique: false })
-        store.createIndex('title', 'title', { unique: false })
-        store.createIndex('createdAt', 'createdAt', { unique: false })
-        console.log('[IndexedDB] Created object store:', STORE_NAME)
+    chrome.storage.local.get([STORAGE_KEY], (result: { [key: string]: any }) => {
+      if (chrome.runtime.lastError) {
+        console.error('[Storage] Failed to get resources:', chrome.runtime.lastError)
+        reject(chrome.runtime.lastError)
+      } else {
+        resolve((result[STORAGE_KEY] as Resource[]) || [])
       }
-    }
-  })
-}
-
-async function getAllFromDB(): Promise<Resource[]> {
-  const db = await getDB()
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction([STORE_NAME], 'readonly')
-    const store = transaction.objectStore(STORE_NAME)
-    const request = store.getAll()
-
-    request.onsuccess = () => {
-      resolve(request.result as Resource[])
-    }
-
-    request.onerror = () => {
-      console.error('[IndexedDB] Failed to get all resources:', request.error)
-      reject(request.error)
-    }
+    })
   })
 }
 
 export async function getAllResources(): Promise<Resource[]> {
   try {
-    return await getAllFromDB()
+    return await getAllFromStorage()
   } catch (error) {
     console.error('[Storage] Failed to get resources:', error)
     return []
@@ -68,26 +34,18 @@ export async function getAllResources(): Promise<Resource[]> {
 }
 
 export async function getResource(id: string): Promise<Resource | null> {
-  const db = await getDB()
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction([STORE_NAME], 'readonly')
-    const store = transaction.objectStore(STORE_NAME)
-    const request = store.get(id)
-
-    request.onsuccess = () => {
-      resolve((request.result as Resource) || null)
-    }
-
-    request.onerror = () => {
-      console.error('[IndexedDB] Failed to get resource:', request.error)
-      reject(request.error)
-    }
-  })
+  try {
+    const allResources = await getAllFromStorage()
+    return allResources.find(r => r.id === id) || null
+  } catch (error) {
+    console.error('[Storage] Failed to get resource:', error)
+    return null
+  }
 }
 
 export async function saveResource(resource: Omit<Resource, 'id' | 'createdAt'> & { id?: string }): Promise<Resource> {
   const now = Date.now()
-  const existingResources = await getAllFromDB()
+  const existingResources = await getAllFromStorage()
   
   const existingResource = resource.id ? existingResources.find(r => r.id === resource.id) : null
   
@@ -98,40 +56,40 @@ export async function saveResource(resource: Omit<Resource, 'id' | 'createdAt'> 
     updatedAt: now
   }
   
-  const db = await getDB()
+  const existingIndex = existingResources.findIndex(r => r.id === newResource.id)
+  if (existingIndex >= 0) {
+    existingResources[existingIndex] = newResource
+  } else {
+    existingResources.push(newResource)
+  }
+  
   return new Promise((resolve, reject) => {
-    const transaction = db.transaction([STORE_NAME], 'readwrite')
-    const store = transaction.objectStore(STORE_NAME)
-    const request = store.put(newResource)
-
-    request.onsuccess = () => {
-      console.log('[Storage] Saved resource:', newResource.id)
-      resolve(newResource)
-    }
-
-    request.onerror = () => {
-      console.error('[IndexedDB] Failed to save resource:', request.error)
-      reject(request.error)
-    }
+    chrome.storage.local.set({ [STORAGE_KEY]: existingResources }, () => {
+      if (chrome.runtime.lastError) {
+        console.error('[Storage] Failed to save resource:', chrome.runtime.lastError)
+        reject(chrome.runtime.lastError)
+      } else {
+        console.log('[Storage] Saved resource:', newResource.id)
+        resolve(newResource)
+      }
+    })
   })
 }
 
 export async function deleteResource(id: string): Promise<void> {
-  const db = await getDB()
+  const existingResources = await getAllFromStorage()
+  const filtered = existingResources.filter(r => r.id !== id)
+  
   return new Promise((resolve, reject) => {
-    const transaction = db.transaction([STORE_NAME], 'readwrite')
-    const store = transaction.objectStore(STORE_NAME)
-    const request = store.delete(id)
-
-    request.onsuccess = () => {
-      console.log('[Storage] Deleted resource:', id)
-      resolve()
-    }
-
-    request.onerror = () => {
-      console.error('[IndexedDB] Failed to delete resource:', request.error)
-      reject(request.error)
-    }
+    chrome.storage.local.set({ [STORAGE_KEY]: filtered }, () => {
+      if (chrome.runtime.lastError) {
+        console.error('[Storage] Failed to delete resource:', chrome.runtime.lastError)
+        reject(chrome.runtime.lastError)
+      } else {
+        console.log('[Storage] Deleted resource:', id)
+        resolve()
+      }
+    })
   })
 }
 
@@ -161,7 +119,7 @@ export async function searchResources(query: string): Promise<Resource[]> {
   }
   
   try {
-    const allResources = await getAllResources()
+    const allResources = await getAllFromStorage()
     const lowerQuery = query.toLowerCase()
     
     return allResources.filter(resource => {
