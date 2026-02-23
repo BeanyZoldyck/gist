@@ -223,27 +223,71 @@ function getContentEditableQuery(element: HTMLElement, cursorPosition: number): 
 }
 
 function replaceContentEditableText(element: HTMLElement, cursorPosition: number, query: string, url: string): void {
-  const textContent = element.innerText || element.textContent || ''
-  const newContent = textContent.substring(0, cursorPosition) + url + textContent.substring(cursorPosition + query.length)
-
-  element.innerText = newContent
+  element.focus()
 
   const selection = window.getSelection()
-  if (selection) {
-    const range = document.createRange()
-    const textNode = element.firstChild
+  if (!selection) return
 
-    if (textNode) {
-      const nodeValue = (textNode as Text).nodeValue || ''
-      const newCursorPos = cursorPosition + url.length
-      range.setStart(textNode, Math.min(newCursorPos, nodeValue.length))
-      range.setEnd(textNode, Math.min(newCursorPos, nodeValue.length))
-      selection.removeAllRanges()
-      selection.addRange(range)
+  const range = selection.getRangeAt(0)
+
+  const textNodes: Text[] = []
+  const walker = document.createTreeWalker(
+    element,
+    NodeFilter.SHOW_TEXT,
+    null
+  )
+
+  let node: Node | null
+  while (node = walker.nextNode()) {
+    textNodes.push(node as Text)
+  }
+
+  let charCount = 0
+  let queryStartNode: Text | null = null
+  let queryStartOffset = 0
+  let queryEndNode: Text | null = null
+  let queryEndOffset = 0
+
+  for (let i = 0; i < textNodes.length; i++) {
+    const textNode = textNodes[i]
+    const nodeLength = (textNode.textContent || '').length
+
+    if (charCount <= cursorPosition && charCount + nodeLength >= cursorPosition) {
+      queryStartNode = textNode
+      queryStartOffset = cursorPosition - charCount
     }
+
+    if (charCount <= cursorPosition + query.length && charCount + nodeLength >= cursorPosition + query.length) {
+      queryEndNode = textNode
+      queryEndOffset = (cursorPosition + query.length) - charCount
+      break
+    }
+
+    charCount += nodeLength
+  }
+
+  if (!queryStartNode || !queryEndNode) {
+    console.error('[Completion] Could not find query range in text nodes')
+    return
+  }
+
+  range.setStart(queryStartNode, queryStartOffset)
+  range.setEnd(queryEndNode, queryEndOffset)
+  selection.removeAllRanges()
+  selection.addRange(range)
+
+  document.execCommand('delete', false, undefined)
+
+  const typeChar = (char: string) => {
+    document.execCommand('insertText', false, char)
+  }
+
+  for (let i = 0; i < url.length; i++) {
+    typeChar(url[i])
   }
 
   element.dispatchEvent(new Event('input', { bubbles: true }))
+  element.dispatchEvent(new Event('change', { bubbles: true }))
 }
 
 function calculateRelevanceScore(query: string, resource: Resource): number {
