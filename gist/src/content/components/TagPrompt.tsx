@@ -16,59 +16,10 @@ export default function TagPrompt({ visible, position, url, title: _title, onSav
   const [suggestions, setSuggestions] = useState<string[]>([])
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1)
-  const containerRef = useRef<HTMLDivElement>(null)
-  const timeoutRef = useRef<number | null>(null)
-
   const currentInputValue = useMemo(() => {
     const tagList = tags.split(',').map(t => t.trim())
     return tagList[tagList.length - 1] || ''
   }, [tags])
-
-  useEffect(() => {
-    if (!visible) return
-
-   const handleMouseMove = () => {
-     onSkip()
-   }
-
-    document.addEventListener('mousemove', handleMouseMove, { once: true })
-
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove)
-    }
-  }, [visible, onSkip])
-
-  useEffect(() => {
-    if (!visible) return
-
-    timeoutRef.current = window.setTimeout(() => {
-      onSkip()
-    }, 3000)
-
-    return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current)
-      }
-    }
-  }, [visible, onSkip])
-
-  useEffect(() => {
-    if (!visible) return
-
-    const handleClickOutside = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        onSkip()
-      }
-    }
-
-    setTimeout(() => {
-      document.addEventListener('mousedown', handleClickOutside)
-    }, 0)
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-    }
-  }, [visible, onSkip])
 
   useEffect(() => {
     if (currentInputValue.length > 0 && existingTags.length > 0) {
