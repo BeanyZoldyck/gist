@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "composite": true,
+    "skipLibCheck": true,
+    "skipDefaultLibCheck": true
+  },
+  "include": ["src/sidepanel/AIToolChat.tsx"],
+  "exclude": ["src/ai/assistant.ts"]
+}
