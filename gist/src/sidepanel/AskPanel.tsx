@@ -40,6 +40,7 @@ export default function AskPanel() {
   const handleAsk = async () => {
     if (!question.trim() || isLoading) return
 
+    console.log('[AskPanel] Asking:', question.trim())
     setIsLoading(true)
     setError(null)
     setAnswer(null)
@@ -50,12 +51,16 @@ export default function AskPanel() {
         question: question.trim()
       })
 
+      console.log('[AskPanel] Response:', response)
+
       if (response.success) {
+        console.log('[AskPanel] Data:', response.data)
         setAnswer(response.data)
       } else {
         setError(response.error || 'Failed to get answer')
       }
     } catch (err) {
+      console.error('[AskPanel] Error:', err)
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setIsLoading(false)
