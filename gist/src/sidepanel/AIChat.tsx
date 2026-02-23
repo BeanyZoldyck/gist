@@ -16,7 +16,7 @@ export default function AIChatPanel() {
   const assistant = getAssistant()
 
   useEffect(() => {
-    chrome.storage.local.get(['aiApiKey', 'aiModel', 'aiBaseUrl'], (result) => {
+    chrome.storage.local.get(['aiApiKey', 'aiModel', 'aiBaseUrl'], (result: any) => {
       if (result.aiApiKey) {
         setApiKey(result.aiApiKey)
         setAssistantConfig({
@@ -99,28 +99,44 @@ export default function AIChatPanel() {
     setInput('')
     setIsLoading(true)
 
+    const assistantMessageId = `msg_${Date.now()}`
+
+    const assistantMessage: AIMessage = {
+      id: assistantMessageId,
+      role: 'assistant',
+      content: '',
+      timestamp: Date.now(),
+      isStreaming: true
+    }
+    setMessages(prev => [...prev, assistantMessage])
+
     try {
-      const response = await assistant.chat(userMessage, {
+      let fullContent = ''
+      for await (const chunk of assistant.chatStream(userMessage, {
         pageSnapshot,
         currentUrl: window.location.href,
         pageTitle: document.title
-      })
+      })) {
+        fullContent += chunk
+        setMessages(prev => prev.map(msg =>
+          msg.id === assistantMessageId
+            ? { ...msg, content: fullContent }
+            : msg
+        ))
+      }
 
-      const assistantMessage: AIMessage = {
-        id: `msg_${Date.now()}`,
-        role: 'assistant',
-        content: response.content,
-        timestamp: Date.now()
-      }
-      setMessages(prev => [...prev, assistantMessage])
+      setMessages(prev => prev.map(msg =>
+        msg.id === assistantMessageId
+          ? { ...msg, isStreaming: false }
+          : msg
+      ))
     } catch (error) {
-      const errorMessage: AIMessage = {
-        id: `msg_${Date.now()}`,
-        role: 'assistant',
-        content: `Error: ${error instanceof Error ? error.message : String(error)}`,
-        timestamp: Date.now()
-      }
-      setMessages(prev => [...prev, errorMessage])
+      const errorMessage = `Error: ${error instanceof Error ? error.message : String(error)}`
+      setMessages(prev => prev.map(msg =>
+        msg.id === assistantMessageId
+          ? { ...msg, content: errorMessage, isStreaming: false }
+          : msg
+      ))
     } finally {
       setIsLoading(false)
     }

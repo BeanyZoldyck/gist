@@ -1,4 +1,4 @@
-import { searchResources as searchQdrant, upsertResource, deleteResource as deleteFromQdrant, getAllResources as getAllFromQdrant } from './utils/qdrant-client'
+import { searchResources as searchQdrant, upsertResource, deleteResource as deleteFromQdrant } from './utils/qdrant-client'
 
 export interface Resource {
   id: string
@@ -265,6 +265,61 @@ async function deleteAllResourcesFromDB(): Promise<void> {
   }
 }
 
+async function keywordSearch(query: string): Promise<Resource[]> {
+  const allResources = await getAllFromDB()
+  const lowerQuery = query.toLowerCase()
+
+  return allResources.filter((resource: Resource) => {
+    const titleMatch = resource.title.toLowerCase().includes(lowerQuery)
+    const urlMatch = resource.url.toLowerCase().includes(lowerQuery)
+    const notesMatch = resource.notes.toLowerCase().includes(lowerQuery)
+    const textMatch = resource.text?.toLowerCase().includes(lowerQuery)
+    const tagsMatch = resource.tags.some(tag => tag.toLowerCase().includes(lowerQuery))
+    const pageUrlMatch = resource.pageUrl?.toLowerCase().includes(lowerQuery)
+    const pageTitleMatch = resource.pageTitle?.toLowerCase().includes(lowerQuery)
+    const pageDescMatch = resource.pageDescription?.toLowerCase().includes(lowerQuery)
+    const linkContextMatch = resource.linkContext?.toLowerCase().includes(lowerQuery)
+
+    return titleMatch || urlMatch || notesMatch || textMatch || tagsMatch ||
+           pageUrlMatch || pageTitleMatch || pageDescMatch || linkContextMatch
+  })
+}
+
+function hybridMerge(qdrantResults: any[], keywordResults: Resource[]): Resource[] {
+  const seen = new Set<string>()
+  const merged: Resource[] = []
+
+  for (const r of qdrantResults) {
+    const id = r.id || r.payload?.id
+    if (id && !seen.has(id)) {
+      seen.add(id)
+      merged.push({
+        id,
+        url: r.payload?.url || r.url,
+        title: r.payload?.title || r.title,
+        text: r.payload?.text || r.text,
+        notes: r.payload?.notes || r.notes,
+        tags: r.payload?.tags || r.tags,
+        createdAt: r.payload?.createdAt || r.createdAt,
+        updatedAt: r.payload?.updatedAt || r.updatedAt,
+        pageUrl: r.payload?.pageUrl || r.pageUrl,
+        pageTitle: r.payload?.pageTitle || r.pageTitle,
+        pageDescription: r.payload?.pageDescription || r.pageDescription,
+        linkContext: r.payload?.linkContext || r.linkContext,
+      })
+    }
+  }
+
+  for (const r of keywordResults) {
+    if (!seen.has(r.id)) {
+      seen.add(r.id)
+      merged.push(r)
+    }
+  }
+
+  return merged
+}
+
 function broadcastUpdate() {
   chrome.runtime.sendMessage({ type: 'RESOURCES_UPDATED' }).catch(() => {
   })
@@ -425,12 +480,38 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           }
 
           await saveResourceToDB(newResource)
+
+          try {
+            await upsertResource({
+              id: newResource.id,
+              vector: [],
+              payload: {
+                url: newResource.url,
+                title: newResource.title,
+                text: newResource.text || '',
+                notes: newResource.notes,
+                tags: newResource.tags,
+                createdAt: newResource.createdAt,
+                updatedAt: newResource.updatedAt
+              }
+            })
+          } catch (e) {
+            console.log('[Background] Qdrant upsert failed (non-fatal):', e)
+          }
+
           broadcastUpdate()
           sendResponse({ success: true, data: newResource })
           break
         }
         case 'DELETE_RESOURCE': {
           await deleteResourceFromDB(message.id)
+
+          try {
+            await deleteFromQdrant(message.id)
+          } catch (e) {
+            console.log('[Background] Qdrant delete failed (non-fatal):', e)
+          }
+
           broadcastUpdate()
           sendResponse({ success: true })
           break
@@ -471,29 +552,26 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           const query = message.query?.trim()
           if (!query) {
             const resources = await getAllFromDB()
-            sendResponse({ success: true, data: resources })
+            sendResponse({ success: true, data: resources, searchMode: 'all' })
             return
           }
 
-          const allResources = await getAllFromDB()
-          const lowerQuery = query.toLowerCase()
+          let qdrantResults: any[] = []
 
-          const results = allResources.filter((resource: Resource) => {
-            const titleMatch = resource.title.toLowerCase().includes(lowerQuery)
-            const urlMatch = resource.url.toLowerCase().includes(lowerQuery)
-            const notesMatch = resource.notes.toLowerCase().includes(lowerQuery)
-            const textMatch = resource.text?.toLowerCase().includes(lowerQuery)
-            const tagsMatch = resource.tags.some(tag => tag.toLowerCase().includes(lowerQuery))
-            const pageUrlMatch = resource.pageUrl?.toLowerCase().includes(lowerQuery)
-            const pageTitleMatch = resource.pageTitle?.toLowerCase().includes(lowerQuery)
-            const pageDescMatch = resource.pageDescription?.toLowerCase().includes(lowerQuery)
-            const linkContextMatch = resource.linkContext?.toLowerCase().includes(lowerQuery)
+          try {
+            qdrantResults = await searchQdrant(query, 20)
+          } catch (e) {
+            console.log('[Background] Qdrant unavailable, using keyword search')
+          }
 
-            return titleMatch || urlMatch || notesMatch || textMatch || tagsMatch ||
-                   pageUrlMatch || pageTitleMatch || pageDescMatch || linkContextMatch
-          })
+          const keywordResults = await keywordSearch(query)
 
-          sendResponse({ success: true, data: results })
+          if (qdrantResults.length > 0) {
+            const merged = hybridMerge(qdrantResults, keywordResults)
+            sendResponse({ success: true, data: merged, searchMode: 'hybrid' })
+          } else {
+            sendResponse({ success: true, data: keywordResults, searchMode: 'keyword' })
+          }
           break
         }
         case 'AUTOMATION_ACTION': {

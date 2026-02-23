@@ -18,7 +18,6 @@ export default function App() {
   const [editNotes, setEditNotes] = useState('')
   const [hoveredCard, setHoveredCard] = useState<string | null>(null)
   const [hoveredTitle, setHoveredTitle] = useState<string | null>(null)
-  const [showAutomation, setShowAutomation] = useState(false)
   const [automationLogs, setAutomationLogs] = useState<string[]>([])
   const [automationCommand, setAutomationCommand] = useState('')
   const [automationPayload, setAutomationPayload] = useState('')
