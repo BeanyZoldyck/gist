@@ -55,14 +55,23 @@ export default function App() {
         )}
         
         <div className="bg-gray-800/50 rounded-lg p-5">
-          <h3 className="font-semibold mb-3">Link Hints</h3>
-          <p className="text-gray-400 text-sm mb-3">
-            Keyboard: <code className="bg-gray-700 px-2 py-0.5 rounded text-xs">Ctrl+Shift+L</code> or <code className="bg-gray-700 px-2 py-0.5 rounded text-xs">Cmd+Shift+L</code>
-          </p>
+          <h3 className="font-semibold mb-3">Save Content</h3>
+          <div className="text-gray-400 text-sm mb-3">
+            <p className="mb-2"><strong>Text Selection:</strong></p>
+            <p className="mb-1">
+              Keyboard: <code className="bg-gray-700 px-2 py-0.5 rounded text-xs">Ctrl+Shift+S</code> or <code className="bg-gray-700 px-2 py-0.5 rounded text-xs">Cmd+Shift+S</code>
+            </p>
+            <p className="mb-3">
+              Right-click: "Save to Gist Knowledge Base"
+            </p>
+            <p className="mb-2"><strong>Link Hints:</strong></p>
+            <p className="mb-1">
+              Keyboard: <code className="bg-gray-700 px-2 py-0.5 rounded text-xs">Ctrl+Shift+L</code> or <code className="bg-gray-700 px-2 py-0.5 rounded text-xs">Cmd+Shift+L</code>
+            </p>
+          </div>
           <ol className="text-gray-400 text-sm space-y-1 list-decimal list-inside">
-            <li>Click above or use keyboard shortcut</li>
-            <li>Navigate with j/k or arrow keys</li>
-            <li>Press Enter to select & save link</li>
+            <li>Select text → Save with shortcut or context menu</li>
+            <li>Use link hints to save links/buttons</li>
           </ol>
         </div>
 

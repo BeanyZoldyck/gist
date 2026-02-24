@@ -18,6 +18,7 @@ export default defineManifest({
     'sidePanel',
     'contentSettings',
     'storage',
+    'contextMenus',
   ],
   content_scripts: [
     {
@@ -32,7 +33,14 @@ export default defineManifest({
       js: ['src/content/input-completion.tsx'],
       matches: ['https://*/*'],
     },
+    {
+      js: ['src/content/save-selection.tsx'],
+      matches: ['https://*/*'],
+    },
   ],
+  background: {
+    service_worker: 'src/background/index.ts',
+  },
   side_panel: {
     default_path: 'src/sidepanel/index.html',
   },
