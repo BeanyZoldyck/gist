@@ -23,7 +23,10 @@ npm install
 ```bash
 npm run dev
 ```
+2.5 Start QDrant backend
+bun i @qdrant/js-client-rest
 
+sudo docker run -p 6333:6333 qdrant/qdrant 
 3. Open Chrome and navigate to `chrome://extensions/`, enable "Developer mode", and load the unpacked extension from the `dist` directory.
 
 4. Build for production:
