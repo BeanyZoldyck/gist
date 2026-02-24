@@ -102,14 +102,26 @@ def chat_completion(
     if context:
         user_input_with_context = query + "\n\nRelevant Context:\n" + "\n".join(context)
 
-    messages = []
+    contents = []
+
     if conversation_history:
-        messages.extend(conversation_history)
-    messages.append({"role": "user", "content": user_input_with_context})
+        for msg in conversation_history:
+            role = "model" if msg["role"] == "assistant" else msg["role"]
+            contents.append(
+                genai.types.Content(
+                    role=role, parts=[genai.types.Part(text=msg["content"])]
+                )
+            )
+
+    contents.append(
+        genai.types.Content(
+            role="user", parts=[genai.types.Part(text=user_input_with_context)]
+        )
+    )
 
     response = client.models.generate_content(
-        model="gemini-2.0-flash-exp",
-        contents=messages,
+        model="gemini-2.5-flash",
+        contents=contents,
         config=genai.types.GenerateContentConfig(
             system_instruction=system_message,
         ),

@@ -41,7 +41,6 @@ export default function App() {
 
     setLoading(true)
     const userMessage: Message = { role: 'user', content: query }
-    setMessages(prev => [...prev, userMessage])
 
     try {
       const response = await fetch(`${apiUrl}/query`, {
@@ -62,7 +61,7 @@ export default function App() {
         content: data.response,
         context: data.context
       }
-      setMessages(prev => [...prev, assistantMessage])
+      setMessages(prev => [...prev, userMessage, assistantMessage])
       setQuery('')
     } catch (error) {
       console.error('Error:', error)
@@ -70,7 +69,7 @@ export default function App() {
         role: 'assistant',
         content: 'Error: Failed to connect to RAG API. Make sure the server is running.'
       }
-      setMessages(prev => [...prev, errorMessage])
+      setMessages(prev => [...prev, userMessage, errorMessage])
     } finally {
       setLoading(false)
     }
