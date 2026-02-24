@@ -11,7 +11,7 @@ load_dotenv()
 qdrant = QdrantClient(host="127.0.0.1", port=6333, check_compatibility=False)
 
 COLLECTION_NAME = "my_knowledge_base"
-VECTOR_SIZE = 768
+VECTOR_SIZE = 3072
 
 
 def insert_documents(documents: list[str]) -> None:
@@ -33,16 +33,19 @@ def insert_documents(documents: list[str]) -> None:
     client = genai.Client(api_key=api_key)
     embed_response = client.models.embed_content(
         model="gemini-embedding-001",
-        contents=documents,
+        contents=documents,  # type: ignore[arg-type]
     )
 
     if embed_response.embeddings:
         points = []
         for i, embedding in enumerate(embed_response.embeddings):
+            embedding_values = embedding.values
+            if embedding_values is None:
+                continue
             points.append(
                 PointStruct(
                     id=str(uuid.uuid4()),
-                    vector=embedding,
+                    vector=embedding_values,
                     payload={"text": documents[i]},
                 )
             )
@@ -55,28 +58,33 @@ def insert_documents(documents: list[str]) -> None:
 def query_documents(query: str, limit: int = 1) -> list[str]:
     print(f'\nEmbedding search query: "{query}"')
 
-    embed_model = ai.models.get_model("models/embedding-001")
-    query_embed_response = embed_model.embed_content(
-        content=query, task_type="RETRIEVAL_QUERY", output_dimensionality=VECTOR_SIZE
+    api_key = os.environ.get("GEMINI_API_KEY")
+    client = genai.Client(api_key=api_key)
+    query_embed_response = client.models.embed_content(
+        model="gemini-embedding-001",
+        contents=query,
     )
 
-    query_vector = query_embed_response.embedding.values
+    query_vector = None
+    if query_embed_response.embeddings and query_embed_response.embeddings[0].values:
+        query_vector = query_embed_response.embeddings[0].values
 
     if not query_vector:
         raise RuntimeError("Failed to generate embedding for the query.")
 
     print(f"Searching Qdrant for the top {limit} semantic match(es)...")
-    search_results = qdrant.search(
+    search_results = qdrant.query_points(
         collection_name=COLLECTION_NAME,
-        query_vector=query_vector,
+        query=query_vector,
         limit=limit,
         with_payload=True,
     )
 
     results = []
-    for match in search_results:
+    for match in search_results.points:
         print(f"🎯 Match Score: {match.score}")
-        results.append(match.payload["text"])
+        if match.payload:
+            results.append(match.payload["text"])
 
     return results
 
