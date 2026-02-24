@@ -12,12 +12,19 @@ interface Message {
   context?: string[]
 }
 
+interface SyncStatus {
+  syncing: boolean
+  message: string | null
+  success: boolean
+}
+
 export default function App() {
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
   const [apiUrl, setApiUrl] = useState('http://localhost:8000')
   const [connected, setConnected] = useState<boolean | null>(null)
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>({ syncing: false, message: null, success: false })
 
   const checkConnection = async () => {
     try {
@@ -80,6 +87,34 @@ export default function App() {
     setMessages([])
   }
 
+  const syncResources = async () => {
+    setSyncStatus({ syncing: true, message: 'Syncing resources...', success: false })
+    
+    try {
+      const { getAllResources } = await import('../content/utils/resource-storage')
+      const { syncAllResourcesToApi } = await import('../content/utils/api-sync')
+      
+      const resources = await getAllResources()
+      const result = await syncAllResourcesToApi(resources, apiUrl)
+      
+      setSyncStatus({
+        syncing: false,
+        message: result.message || (result.success ? 'Sync complete' : 'Sync failed'),
+        success: result.success
+      })
+      
+      if (result.success) {
+        console.log('[SidePanel] Synced', result.syncedCount, 'resources')
+      }
+    } catch (error) {
+      setSyncStatus({
+        syncing: false,
+        message: `Sync failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        success: false
+      })
+    }
+  }
+
   return (
     <div className="h-screen flex flex-col bg-[#1a1a1a] text-white">
       <div className="p-4 border-b border-gray-700">
@@ -102,6 +137,26 @@ export default function App() {
           placeholder="API URL"
           className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500"
         />
+        <div className="flex gap-2 mt-3">
+          <button 
+            onClick={syncResources}
+            disabled={syncStatus.syncing}
+            className={`flex-1 text-sm px-3 py-2 rounded transition-colors ${
+              syncStatus.syncing 
+                ? 'bg-gray-600 cursor-not-allowed' 
+                : 'bg-indigo-600 hover:bg-indigo-700'
+            }`}
+          >
+            {syncStatus.syncing ? 'Syncing...' : 'Sync Resources'}
+          </button>
+        </div>
+        {syncStatus.message && (
+          <div className={`mt-2 text-xs px-3 py-2 rounded ${
+            syncStatus.success ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'
+          }`}>
+            {syncStatus.message}
+          </div>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto p-4">

@@ -48,6 +48,26 @@ export async function saveResource(resource: Omit<Resource, 'id' | 'createdAt'> 
   return newResource
 }
 
+export async function saveAndSyncResource(
+  resource: Omit<Resource, 'id' | 'createdAt'> & { id?: string },
+  apiUrl?: string
+): Promise<{ resource: Resource; synced: boolean; error?: string }> {
+  const savedResource = await saveResource(resource)
+  
+  try {
+    const { syncResourceToApi } = await import('./api-sync')
+    const result = await syncResourceToApi(savedResource, apiUrl)
+    return { resource: savedResource, synced: result.success, error: result.message }
+  } catch (error) {
+    console.error('[ResourceStorage] Failed to sync resource to API:', error)
+    return { 
+      resource: savedResource, 
+      synced: false, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    }
+  }
+}
+
 export async function deleteResource(id: string): Promise<void> {
   const resources = await getAllResources()
   const filtered = resources.filter(r => r.id !== id)
@@ -74,6 +94,38 @@ export async function updateResourceNotes(id: string, notes: string): Promise<Re
   resources[index].updatedAt = Date.now()
   await chrome.storage.local.set({ [RESOURCES_KEY]: resources })
   return resources[index]
+}
+
+export async function updateAndSyncResource(
+  id: string,
+  updates: { tags?: string[]; notes?: string },
+  apiUrl?: string
+): Promise<{ resource: Resource | null; synced: boolean; error?: string }> {
+  let resource = null
+  
+  if (updates.tags !== undefined) {
+    resource = await updateResourceTags(id, updates.tags)
+  }
+  if (updates.notes !== undefined) {
+    resource = await updateResourceNotes(id, updates.notes)
+  }
+  
+  if (!resource) {
+    return { resource: null, synced: false, error: 'Resource not found' }
+  }
+  
+  try {
+    const { syncResourceToApi } = await import('./api-sync')
+    const result = await syncResourceToApi(resource, apiUrl)
+    return { resource, synced: result.success, error: result.message }
+  } catch (error) {
+    console.error('[ResourceStorage] Failed to sync resource to API:', error)
+    return { 
+      resource, 
+      synced: false, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    }
+  }
 }
 
 export async function searchResources(query: string): Promise<Resource[]> {

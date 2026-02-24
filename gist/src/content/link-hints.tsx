@@ -2,7 +2,7 @@ import { StrictMode, useState, useEffect } from 'react'
 import { createRoot } from 'react-dom/client'
 import LinkHints from './components/LinkHints'
 import { LinkHint } from './utils/link-hints'
-import { saveResource, Resource } from './utils/resource-storage'
+import { saveAndSyncResource, Resource } from './utils/resource-storage'
 
 const LINK_HINTS_MODE_KEY = 'gist_link_hints_mode_active'
 
@@ -62,8 +62,13 @@ function LinkHintsApp() {
     }
     
     try {
-      const saved = await saveResource(resource)
-      console.log('[LinkHints] Saved resource:', saved)
+      const result = await saveAndSyncResource(resource)
+      console.log('[LinkHints] Saved resource:', result.resource)
+      if (result.synced) {
+        console.log('[LinkHints] Resource synced to API successfully')
+      } else {
+        console.warn('[LinkHints] Resource sync failed:', result.error)
+      }
       
       if (hint.href) {
         window.open(hint.href, '_blank')
