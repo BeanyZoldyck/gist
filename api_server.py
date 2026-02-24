@@ -2,16 +2,12 @@ from fastapi import FastAPI, HTTPException
 import os
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from openai import OpenAI
 from typing import List, Optional
-from rag import query_documents, insert_documents
+from rag import query_documents, insert_documents, chat_completion
 
 import dotenv
 
 dotenv.load_dotenv()
-
-OLLAMA_BASE_URL = "http://localhost:11434/v1"
-OLLAMA_MODEL = "llama3"
 
 app = FastAPI(title="Local RAG API", version="1.0.0")
 
@@ -22,8 +18,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-client = OpenAI(base_url=OLLAMA_BASE_URL, api_key="ollama")
 
 
 class QueryRequest(BaseModel):
@@ -56,34 +50,22 @@ def health_check():
 @app.post("/query", response_model=ChatResponse)
 def query_rag(request: QueryRequest):
     try:
-        context = query_documents(request.query, limit=request.top_k)
-
-        user_input_with_context = request.query
-        if context:
-            user_input_with_context = (
-                request.query + "\n\nRelevant Context:\n" + "\n".join(context)
-            )
+        context = query_documents(request.query, limit=request.top_k or 9)
 
         system_message = (
             request.system_message
             or "You are a helpful assistant that answers questions based on the provided context."
         )
 
-        messages = [{"role": "system", "content": system_message}]
-
-        if request.conversation_history:
-            messages.extend(request.conversation_history)
-
-        messages.append({"role": "user", "content": user_input_with_context})
-
-        response = client.chat.completions.create(
-            model=OLLAMA_MODEL,
-            messages=messages,
-            max_tokens=800,
+        response = chat_completion(
+            query=request.query,
+            context=context,
+            system_message=system_message,
+            conversation_history=request.conversation_history,
         )
 
         return ChatResponse(
-            response=response.choices[0].message.content,
+            response=response,
             context=context,
         )
     except Exception as e:

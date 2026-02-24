@@ -89,6 +89,38 @@ def query_documents(query: str, limit: int = 1) -> list[str]:
     return results
 
 
+def chat_completion(
+    query: str,
+    context: list[str],
+    system_message: str = "You are a helpful assistant that answers questions based on the provided context.",
+    conversation_history: list[dict] | None = None,
+) -> str:
+    api_key = os.environ.get("GEMINI_API_KEY")
+    client = genai.Client(api_key=api_key)
+
+    user_input_with_context = query
+    if context:
+        user_input_with_context = query + "\n\nRelevant Context:\n" + "\n".join(context)
+
+    messages = []
+    if conversation_history:
+        messages.extend(conversation_history)
+    messages.append({"role": "user", "content": user_input_with_context})
+
+    response = client.models.generate_content(
+        model="gemini-2.0-flash-exp",
+        contents=messages,
+        config=genai.types.GenerateContentConfig(
+            system_instruction=system_message,
+        ),
+    )
+
+    result = response.text
+    if result is None:
+        return ""
+    return result
+
+
 if __name__ == "__main__":
     sample_data = [
         "The open source translation model tweet can be found here: https://twitter.com/tech_update/status/987654321",
