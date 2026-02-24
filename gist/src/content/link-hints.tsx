@@ -49,7 +49,7 @@ function LinkHintsApp() {
     }
   }, [])
 
-  const handleLinkSelected = async (hint: LinkHint) => {
+  const handleLinkSelected = async (hint: LinkHint, openLink: boolean = false) => {
     const url = hint.href || hint.element.getAttribute('data-href') || window.location.href
     const title = hint.text || new URL(url).hostname || 'Untitled'
     
@@ -70,18 +70,22 @@ function LinkHintsApp() {
         console.warn('[LinkHints] Resource sync failed:', result.error)
       }
       
-      if (hint.href) {
-        window.open(hint.href, '_blank')
-      } else {
-        hint.element.click()
+      if (openLink) {
+        if (hint.href) {
+          window.open(hint.href, '_blank')
+        } else {
+          hint.element.click()
+        }
       }
     } catch (error) {
       console.error('[LinkHints] Failed to save resource:', error)
       
-      if (hint.href) {
-        window.open(hint.href, '_blank')
-      } else {
-        hint.element.click()
+      if (openLink) {
+        if (hint.href) {
+          window.open(hint.href, '_blank')
+        } else {
+          hint.element.click()
+        }
       }
     }
   }
