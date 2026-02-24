@@ -77,6 +77,7 @@ def query_rag(request: QueryRequest):
 def add_document(request: AddDocumentRequest):
     try:
         insert_documents([request.content])
+        print(f"inserted {request.content}")
         return {"message": "Document added"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -81,24 +81,19 @@ export default function LinkHints({ visible, onLinkSelected, onClose }: LinkHint
     }
 
     const validChars = 'asdfghjkl'
-    if (validChars.includes(e.key.toLowerCase())) {
+    const isNumber = /^[0-9]$/.test(e.key)
+    
+    if (validChars.includes(e.key.toLowerCase()) || isNumber) {
       e.preventDefault()
       e.stopPropagation()
       
       const newSequence = inputSequence + e.key.toLowerCase()
       setInputSequence(newSequence)
       
-      const firstChar = newSequence[0]
-      const charsIndex = 'asdfghjkl'.indexOf(firstChar)
-      
-      if (charsIndex === -1) {
-        return
-      }
-      
       if (newSequence.length === 1) {
         const filteredHints = allHints.filter((_, idx) => {
           const hintChars = getHintLabel(idx)
-          return hintChars.startsWith(newSequence)
+          return hintChars.toLowerCase().startsWith(newSequence)
         })
         
         setHints(filteredHints)
@@ -106,17 +101,27 @@ export default function LinkHints({ visible, onLinkSelected, onClose }: LinkHint
         if (filteredHints.length > 0) {
           setActiveIndex(0)
         }
-      } else if (newSequence.length === 2) {
-        const firstCharIndex = 'asdfghjkl'.indexOf(newSequence[0])
-        const secondCharIndex = 'asdfghjkl'.indexOf(newSequence[1])
-        
-        if (firstCharIndex >= 0 && secondCharIndex >= 0) {
-          const targetIndex = firstCharIndex * 9 + secondCharIndex
+      } else if (newSequence.length >= 2) {
+        if (/^\d+$/.test(newSequence)) {
+          const targetIndex = parseInt(newSequence) - 1
           const targetHint = allHints[targetIndex]
           
           if (targetHint) {
             onLinkSelected(targetHint, false)
             onClose()
+          }
+        } else {
+          const firstCharIndex = 'asdfghjkl'.indexOf(newSequence[0])
+          const secondCharIndex = 'asdfghjkl'.indexOf(newSequence[1])
+          
+          if (firstCharIndex >= 0 && secondCharIndex >= 0) {
+            const targetIndex = firstCharIndex * 9 + secondCharIndex
+            const targetHint = allHints[targetIndex]
+            
+            if (targetHint) {
+              onLinkSelected(targetHint, false)
+              onClose()
+            }
           }
         }
       }
@@ -176,7 +181,7 @@ export default function LinkHints({ visible, onLinkSelected, onClose }: LinkHint
       <div className="fixed bottom-5 right-5 bg-black/80 text-white px-4 py-3 rounded-lg text-xs font-helvetica z-[2147483648]">
         <div>Link Hints Mode ({hints.length} shown)</div>
         <div className="mt-1.5 opacity-80">
-          j/k or ↑/↓: Navigate • Enter: Save • Click: Save & Open • Esc: Exit
+          Type letters or numbers to filter/select • j/k or ↑/↓: Navigate • Enter: Save • Click: Save & Open • Esc: Exit
         </div>
         {inputSequence && (
           <div className="mt-1.5 text-yellow-400">
