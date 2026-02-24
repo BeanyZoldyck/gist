@@ -7,6 +7,7 @@ import ollama
 from openai import OpenAI
 from typing import List, Optional
 from google import genai
+from rag import query_documents, insert_documents
 
 import dotenv
 
