@@ -149,6 +149,33 @@ export async function searchResources(query: string): Promise<Resource[]> {
   }
 }
 
+export async function getVaultStats(): Promise<{ count: number }> {
+  try {
+    return await sendMessage<{ count: number }>({ type: 'GET_VAULT_STATS' })
+  } catch (error) {
+    console.error('[Storage] Failed to get vault stats:', error)
+    return { count: 0 }
+  }
+}
+
+export async function addDocument(content: string, docId?: string): Promise<Resource> {
+  try {
+    return await sendMessage<Resource>({ type: 'ADD_DOCUMENT', content, docId })
+  } catch (error) {
+    console.error('[Storage] Failed to add document:', error)
+    throw error
+  }
+}
+
+export async function importVaultLines(lines: string[]): Promise<{ addedCount: number }> {
+  try {
+    return await sendMessage<{ addedCount: number }>({ type: 'IMPORT_VAULT_LINES', lines })
+  } catch (error) {
+    console.error('[Storage] Failed to import vault lines:', error)
+    throw error
+  }
+}
+
 export function getResourcePreviewText(resource: Resource): string {
   const maxLength = 100
   if (resource.notes && resource.notes.length > 0) {

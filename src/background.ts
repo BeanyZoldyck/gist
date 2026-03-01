@@ -695,8 +695,15 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
             return
           }
 
+          const topK = message.topK ?? 9
+          const systemMessage = message.systemMessage
+          const conversationHistory = message.conversationHistory
+
           try {
-            const result = await queryWithLLM(question, 5, aiConfig)
+            const result = await queryWithLLM(question, topK, aiConfig, {
+              systemMessage,
+              conversationHistory
+            })
             sendResponse({ success: true, data: result })
           } catch (error) {
             console.error('[Background] RAG query failed:', error)
@@ -707,6 +714,112 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         case 'CHECK_AI_CONFIG': {
           const config = await getAIRAGConfig()
           sendResponse({ success: true, data: { configured: !!config } })
+          break
+        }
+        case 'GET_VAULT_STATS': {
+          const resources = await getAllFromDB()
+          sendResponse({ success: true, data: { count: resources.length } })
+          break
+        }
+        case 'ADD_DOCUMENT': {
+          const content = message.content?.trim()
+          if (!content) {
+            sendResponse({ success: false, error: 'Content is required' })
+            return
+          }
+          const now = Date.now()
+          const docId = (typeof message.docId === 'string' && message.docId.trim()) ? message.docId.trim() : `res_${now}_${Math.random().toString(36).substr(2, 9)}`
+          const firstLine = content.split('\n')[0]?.trim()
+          const title = firstLine && firstLine.length <= 80 ? firstLine : (firstLine ? firstLine.substring(0, 77) + '...' : 'Imported doc')
+          const resource: Resource = {
+            id: docId,
+            url: `local://${docId}`,
+            title,
+            text: content,
+            notes: '',
+            tags: [],
+            createdAt: now,
+            updatedAt: now,
+            pageUrl: `local://${docId}`,
+            pageTitle: title,
+            pageDescription: '',
+            linkContext: ''
+          }
+          await saveResourceToDB(resource)
+          try {
+            await upsertResource({
+              id: resource.id,
+              vector: [],
+              payload: {
+                url: resource.url,
+                title: resource.title,
+                text: resource.text || '',
+                notes: resource.notes,
+                tags: resource.tags,
+                createdAt: resource.createdAt,
+                updatedAt: resource.updatedAt,
+                pageUrl: resource.pageUrl,
+                pageTitle: resource.pageTitle,
+                pageDescription: resource.pageDescription || '',
+                linkContext: resource.linkContext || ''
+              }
+            })
+          } catch (e) {
+            console.log('[Background] Qdrant upsert failed (non-fatal):', e)
+          }
+          broadcastUpdate()
+          sendResponse({ success: true, data: resource })
+          break
+        }
+        case 'IMPORT_VAULT_LINES': {
+          const lines = message.lines ?? []
+          const trimmed = (Array.isArray(lines) ? lines : []).map((l: string) => String(l).trim()).filter(Boolean)
+          const created: Resource[] = []
+          const now = Date.now()
+          for (let i = 0; i < trimmed.length; i++) {
+            const line = trimmed[i]
+            const id = `doc_${now}_${i}`
+            const title = line.length <= 50 ? line : line.substring(0, 47) + '...'
+            const resource: Resource = {
+              id,
+              url: `local://${id}`,
+              title,
+              text: line,
+              notes: '',
+              tags: [],
+              createdAt: now,
+              updatedAt: now,
+              pageUrl: `local://${id}`,
+              pageTitle: title,
+              pageDescription: '',
+              linkContext: ''
+            }
+            await saveResourceToDB(resource)
+            created.push(resource)
+            try {
+              await upsertResource({
+                id: resource.id,
+                vector: [],
+                payload: {
+                  url: resource.url,
+                  title: resource.title,
+                  text: resource.text || '',
+                  notes: resource.notes,
+                  tags: resource.tags,
+                  createdAt: resource.createdAt,
+                  updatedAt: resource.updatedAt,
+                  pageUrl: resource.pageUrl,
+                  pageTitle: resource.pageTitle,
+                  pageDescription: resource.pageDescription || '',
+                  linkContext: resource.linkContext || ''
+                }
+              })
+            } catch (e) {
+              console.log('[Background] Qdrant upsert failed (non-fatal):', e)
+            }
+          }
+          broadcastUpdate()
+          sendResponse({ success: true, data: { addedCount: created.length } })
           break
         }
         default:
@@ -835,7 +948,23 @@ async function searchResourcesForRAG(query: string, limit: number = 5): Promise<
   }))
 }
 
-async function queryWithLLM(question: string, maxSources: number, config: RAGConfig): Promise<RAGResponse> {
+interface QueryWithLLMOptions {
+  systemMessage?: string
+  conversationHistory?: { role: string; content: string }[]
+}
+
+const DEFAULT_SYSTEM_PROMPT = `You are a helpful assistant that answers questions based on the user's saved links/notes.
+
+Answer the user's question using ONLY the provided sources. If the sources don't contain enough information to answer the question, say so clearly.`
+
+async function queryWithLLM(
+  question: string,
+  maxSources: number,
+  config: RAGConfig,
+  options: QueryWithLLMOptions = {}
+): Promise<RAGResponse> {
+  const { systemMessage = DEFAULT_SYSTEM_PROMPT, conversationHistory } = options
+
   let searchResults = await searchResourcesForRAG(question, maxSources * 2)
   
   // Also try Qdrant
@@ -874,9 +1003,18 @@ async function queryWithLLM(question: string, maxSources: number, config: RAGCon
     .map((s, i) => `[Source ${i + 1}]: ${s.title}\nURL: ${s.url}\nContent: ${s.snippet}`)
     .join('\n\n')
 
-  const systemPrompt = `You are a helpful assistant that answers questions based on the user's saved links/notes. 
+  const userMessageWithContext = question + (context ? `\n\nRelevant Context:\n${context}` : '')
 
-Answer the user's question using ONLY the provided sources. If the sources don't contain enough information to answer the question, say so clearly.
+  let answer: string
+  if (conversationHistory && conversationHistory.length > 0) {
+    const messages: { role: string; content: string }[] = [
+      { role: 'system', content: systemMessage },
+      ...conversationHistory,
+      { role: 'user', content: userMessageWithContext }
+    ]
+    answer = await callLLMWithMessages(config, messages)
+  } else {
+    const systemPrompt = `${systemMessage}
 
 Sources:
 ${context}
@@ -884,13 +1022,20 @@ ${context}
 Question: ${question}
 
 Answer:`
-
-  const answer = await callLLM(config, systemPrompt)
+    answer = await callLLM(config, systemPrompt)
+  }
 
   return { answer, sources }
 }
 
 async function callLLM(config: RAGConfig, prompt: string): Promise<string> {
+  return callLLMWithMessages(config, [{ role: 'user', content: prompt }])
+}
+
+async function callLLMWithMessages(
+  config: RAGConfig,
+  messages: { role: string; content: string }[]
+): Promise<string> {
   try {
     const response = await fetch(`${config.baseUrl}/chat/completions`, {
       method: 'POST',
@@ -900,7 +1045,7 @@ async function callLLM(config: RAGConfig, prompt: string): Promise<string> {
       },
       body: JSON.stringify({
         model: config.model,
-        messages: [{ role: 'user', content: prompt }],
+        messages,
         temperature: 0.7,
         max_tokens: 2000
       })

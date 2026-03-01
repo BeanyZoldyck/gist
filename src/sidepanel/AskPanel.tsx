@@ -12,9 +12,13 @@ interface RAGResponse {
   sources: Source[]
 }
 
+const MAX_CONVERSATION_HISTORY = 20
+
 export default function AskPanel() {
   const [question, setQuestion] = useState('')
   const [answer, setAnswer] = useState<RAGResponse | null>(null)
+  const [conversationHistory, setConversationHistory] = useState<{ role: string; content: string }[]>([])
+  const [systemMessage, setSystemMessage] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [aiConfigured, setAiConfigured] = useState<boolean | null>(null)
@@ -48,7 +52,10 @@ export default function AskPanel() {
     try {
       const response = await chrome.runtime.sendMessage({
         type: 'QUERY_WITH_LLM',
-        question: question.trim()
+        question: question.trim(),
+        topK: 9,
+        ...(systemMessage.trim() && { systemMessage: systemMessage.trim() }),
+        ...(conversationHistory.length > 0 && { conversationHistory: conversationHistory.slice(-MAX_CONVERSATION_HISTORY) })
       })
 
       console.log('[AskPanel] Response:', response)
@@ -56,6 +63,10 @@ export default function AskPanel() {
       if (response.success) {
         console.log('[AskPanel] Data:', response.data)
         setAnswer(response.data)
+        setConversationHistory(prev => {
+          const next = [...prev, { role: 'user', content: question.trim() }, { role: 'assistant', content: response.data.answer }]
+          return next.slice(-MAX_CONVERSATION_HISTORY)
+        })
       } else {
         setError(response.error || 'Failed to get answer')
       }
@@ -115,6 +126,20 @@ export default function AskPanel() {
           disabled={isLoading}
           rows={3}
         />
+        <details className="ask-options">
+          <summary>Options</summary>
+          <label className="ask-option-label">
+            System message (optional)
+            <textarea
+              value={systemMessage}
+              onChange={(e) => setSystemMessage(e.target.value)}
+              placeholder="Override default system prompt (e.g. tweet retrieval assistant)"
+              className="ask-input ask-system-message"
+              disabled={isLoading}
+              rows={2}
+            />
+          </label>
+        </details>
         <button 
           onClick={handleAsk} 
           className="ask-button"
